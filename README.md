@@ -58,11 +58,10 @@ This repository contains the **core engine** and the **base game mod**.
 - **Hot reload** — change a file, see results immediately in debug builds
 
 ### Base Game Mod
-- ~30 tile types, ~50 items, 3 enemy types, 1 NPC, 1 boss
+- ~25 tile types, ~30 items, 2 hostile enemies, 1 passive creature, 1 NPC
 - Forest biome with cave systems and underground structures
-- Copper / Iron / Silver ore progression
+- Copper ore progression, wool/cloth crafting
 - Complete UI: main menu, HUD, inventory, crafting, settings
-- Giant Slime boss fight
 
 ## Project Structure
 

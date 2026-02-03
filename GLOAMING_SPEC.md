@@ -1201,11 +1201,10 @@ The base game is a mod like any other — it just ships with the engine and demo
 
 | Category | Contents | Purpose |
 |----------|----------|---------|
-| **Tiles** | ~30 types | Dirt, stone, ores, wood, platforms, torches, doors, chests |
-| **Items** | ~50 items | Basic tools, weapons, materials, consumables |
-| **Enemies** | 3 types | Slime, Bat, Zombie |
+| **Tiles** | ~25 types | Dirt, stone, copper ore, wood, platforms, torches, doors, chests |
+| **Items** | ~30 items | Basic tools, weapons, materials, consumables |
+| **Enemies** | 2 hostile, 1 passive | Bat, Boar, Sheep |
 | **NPCs** | 1 NPC | Guide (explains mechanics) |
-| **Bosses** | 1 boss | Giant Slime |
 | **Biomes** | 1 biome | Forest (surface and underground) |
 | **Structures** | 3 types | Trees, small caves, underground cabin |
 | **UI** | Complete | All menus, HUD, inventory, crafting |
@@ -1227,10 +1226,9 @@ mods/base-game/
 │   ├── init.lua
 │   ├── player.lua              # Player mechanics
 │   ├── guide_npc.lua           # Guide AI and dialogue
-│   ├── slime_ai.lua            # Slime behavior
-│   ├── bat_ai.lua
-│   ├── zombie_ai.lua
-│   └── giant_slime_boss.lua    # Boss patterns
+│   ├── bat_ai.lua              # Bat behavior
+│   ├── boar_ai.lua             # Boar behavior
+│   └── sheep_ai.lua            # Sheep (passive) behavior
 ├── content/
 │   ├── tiles.json              # 30 tile definitions
 │   ├── items.json              # 50 item definitions
@@ -1286,15 +1284,13 @@ mods/base-game/
 
 ### 7.4 Progression (Base Game)
 
-**Ore Tiers:**
+**Ore Tier:**
 1. Copper → Copper Bar → Copper Tools
-2. Iron → Iron Bar → Iron Tools
-3. Silver → Silver Bar → Silver Gear
 
-**Boss:**
-- Giant Slime — summoned with Slime Crown, drops tier-2 materials
+**Resources:**
+- Sheep → Wool → Cloth (crafting material)
 
-**Goal:** Defeat the Giant Slime. This proves all systems work; expansions add more goals.
+**Goal:** Explore, build, and craft. The base game provides a minimal sandbox experience; mods add bosses, additional ores, and deeper progression.
 
 ---
 
@@ -1470,7 +1466,7 @@ mods/base-game/
 - [ ] Enemy spawning system
 - [ ] AI behavior API
 - [ ] Pathfinding (simple: ground follow, flying)
-- [ ] Base game: Slime, Bat, Zombie AI
+- [ ] Base game: Bat, Boar, Sheep AI
 - [ ] Enemy drops
 - [ ] Despawning rules
 
@@ -1492,17 +1488,16 @@ mods/base-game/
 
 ---
 
-### Stage 13: Boss & Events (Week 41-43)
-**Goal:** Climax content
+### Stage 13: Boss Framework & Events (Week 41-43)
+**Goal:** Boss infrastructure for mods
 
 - [ ] Boss entity framework
 - [ ] Boss phases and patterns
 - [ ] Boss health bar UI
 - [ ] Summon item system
-- [ ] Base game: Giant Slime boss
 - [ ] Blood moon event (increased spawns)
 
-**Deliverable:** Summon and defeat a boss
+**Deliverable:** Boss framework ready for mods to use; blood moon event functional
 
 ---
 
@@ -1720,10 +1715,6 @@ ENGINE_SPEC.md          # This document
 
 | Question | Options | Notes |
 |----------|---------|-------|
-| Project name | TBD | Needs brainstorming session |
-| Lua vs other scripting | Lua, Wren, AngelScript | Lua has best ecosystem |
-| UI definition format | Lua, JSON, custom DSL | Lua most flexible |
-| Hot reload scope | Mods only, or engine too? | Mods only simpler |
 | Mod signing | Required, optional, none | Security vs convenience |
 
 ### 12.2 Research Needed
@@ -1733,56 +1724,41 @@ ENGINE_SPEC.md          # This document
 - Best practices for hot-reloading textures
 - JSON schema tooling for editor support
 
-### 12.3 Risks
-
-| Risk | Probability | Mitigation |
-|------|-------------|------------|
-| No community forms | Medium | Make base game genuinely fun |
-| API too limited | Medium | Alpha test with real modders |
-| Performance issues | Low | Profile early, optimize chunk system |
-| Scope creep | High | Strict MVP definition |
-| Burnout | Medium | Reasonable milestones |
-
 ---
 
 ## Appendix A: Content Checklist (Base Game)
 
 ### Tiles (~30)
 - [ ] Dirt, Grass, Stone, Sand
-- [ ] Copper Ore, Iron Ore, Silver Ore
+- [ ] Copper Ore
 - [ ] Wood, Leaves
 - [ ] Platforms (wood, stone)
 - [ ] Torches
 - [ ] Workbench, Furnace, Anvil
 - [ ] Chest, Door
 - [ ] Wood Wall, Stone Wall, Dirt Wall
-- [ ] Water, Lava (liquid tiles)
-- [ ] Crafting stations
+- [ ] Water (liquid tile)
 
-### Items (~50)
-- [ ] Copper Pickaxe, Iron Pickaxe, Silver Pickaxe
-- [ ] Copper Axe, Iron Axe, Silver Axe
-- [ ] Copper Sword, Iron Sword, Silver Sword
-- [ ] Copper Broadsword, Iron Broadsword, Silver Broadsword
-- [ ] Wood Bow, Copper Bow, Iron Bow
+### Items (~30)
+- [ ] Copper Pickaxe
+- [ ] Copper Axe
+- [ ] Copper Sword
+- [ ] Copper Broadsword
+- [ ] Wood Bow, Copper Bow
 - [ ] Arrows (wood, flaming)
-- [ ] Copper Bar, Iron Bar, Silver Bar
-- [ ] Wood (item), Stone (item), Gel
+- [ ] Copper Bar
+- [ ] Wood (item), Stone (item)
+- [ ] Wool, Cloth
 - [ ] Torches, Platforms
 - [ ] Health Potion (minor, lesser)
-- [ ] Slime Crown (boss summon)
-- [ ] Lens, Gel (monster drops)
 
-### Enemies (3)
-- [ ] Slime (bounces, drops gel)
+### Enemies (2 hostile, 1 passive)
 - [ ] Bat (flies, erratic)
-- [ ] Zombie (walks, night only)
+- [ ] Boar (charges, ground enemy)
+- [ ] Sheep (passive, drops wool)
 
 ### NPCs (1)
 - [ ] Guide (tips, recipe hints)
-
-### Bosses (1)
-- [ ] Giant Slime (phases, minion spawns)
 
 ---
 
