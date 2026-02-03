@@ -1,0 +1,13 @@
+{
+    "window": {
+        "width": 1280,
+        "height": 720,
+        "title": "Gloaming",
+        "fullscreen": false,
+        "vsync": true
+    },
+    "logging": {
+        "level": "debug",
+        "file": "gloaming.log"
+    }
+}
