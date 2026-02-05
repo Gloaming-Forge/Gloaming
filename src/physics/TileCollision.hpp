@@ -313,7 +313,13 @@ public:
 
                     if (collision.isSlope) {
                         // For slopes, snap to slope surface
-                        aabb.center.y += remainingVelocity.y - collision.penetration;
+                        // Clamp to prevent overshooting backwards (consistent with regular tile handling)
+                        float movement = remainingVelocity.y - collision.penetration;
+                        if (remainingVelocity.y > 0.0f) {
+                            aabb.center.y += std::max(0.0f, movement);  // Moving down, don't go up
+                        } else {
+                            aabb.center.y += std::min(0.0f, movement);  // Moving up, don't go down
+                        }
                         result.onSlope = true;
                         result.onGround = true;
                     } else {
