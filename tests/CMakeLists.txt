@@ -14,6 +14,7 @@ add_executable(gloaming_tests
     test_config.cpp
     test_log.cpp
     test_time.cpp
+    test_rendering.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

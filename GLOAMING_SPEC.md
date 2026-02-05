@@ -1311,18 +1311,20 @@ mods/base-game/
 
 ---
 
-### Stage 1: Core Rendering (Week 3-5)
+### Stage 1: Core Rendering (Week 3-5) ✓
 **Goal:** Render sprites and tiles
 
-- [ ] Renderer abstraction (`IRenderer`)
-- [ ] Raylib implementation
-- [ ] Texture loading and atlas management
-- [ ] Sprite batching
-- [ ] Camera system (position, zoom, bounds)
-- [ ] Tile rendering with culling
-- [ ] Basic parallax background
+- [x] Renderer abstraction (`IRenderer`)
+- [x] Raylib implementation
+- [x] Texture loading and atlas management
+- [x] Sprite batching
+- [x] Camera system (position, zoom, bounds)
+- [x] Tile rendering with culling
+- [x] Basic parallax background
 
 **Deliverable:** Render a test tilemap with moving camera
+
+**Implemented:** `src/rendering/` contains IRenderer interface, RaylibRenderer, Camera, TextureManager/TextureAtlas, SpriteBatch, TileRenderer, and ParallaxBackground. 47 unit tests for rendering math types, camera transformations, texture atlases, and tile structures. Camera supports position, zoom, rotation, world-to-screen conversion, and bounds clamping. Engine integrated with rendering systems.
 
 ---
 
