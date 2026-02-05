@@ -2,8 +2,14 @@
 
 #include <string>
 #include <cstdint>
+#include <cmath>
 
 namespace gloaming {
+
+// Math constants
+constexpr float PI = 3.14159265358979323846f;
+constexpr float DEG_TO_RAD = PI / 180.0f;
+constexpr float RAD_TO_DEG = 180.0f / PI;
 
 // Forward declarations
 class Camera;
@@ -39,6 +45,7 @@ struct Vec2 {
     constexpr Vec2() = default;
     constexpr Vec2(float x, float y) : x(x), y(y) {}
 
+    // Arithmetic operators
     Vec2 operator+(const Vec2& other) const { return {x + other.x, y + other.y}; }
     Vec2 operator-(const Vec2& other) const { return {x - other.x, y - other.y}; }
     Vec2 operator*(float scalar) const { return {x * scalar, y * scalar}; }
@@ -46,6 +53,20 @@ struct Vec2 {
     Vec2& operator+=(const Vec2& other) { x += other.x; y += other.y; return *this; }
     Vec2& operator-=(const Vec2& other) { x -= other.x; y -= other.y; return *this; }
     Vec2& operator*=(float scalar) { x *= scalar; y *= scalar; return *this; }
+
+    // Comparison operators
+    bool operator==(const Vec2& other) const { return x == other.x && y == other.y; }
+    bool operator!=(const Vec2& other) const { return !(*this == other); }
+
+    // Utility functions
+    float length() const { return std::sqrt(x * x + y * y); }
+    float lengthSquared() const { return x * x + y * y; }
+    Vec2 normalized() const {
+        float len = length();
+        return len > 0.0f ? Vec2(x / len, y / len) : Vec2();
+    }
+    static float dot(const Vec2& a, const Vec2& b) { return a.x * b.x + a.y * b.y; }
+    static float distance(const Vec2& a, const Vec2& b) { return (b - a).length(); }
 };
 
 /// Rectangle for sprite regions, collision bounds, etc.
@@ -111,6 +132,11 @@ public:
     /// Draw a portion of a texture (for atlases/spritesheets)
     virtual void drawTextureRegion(const Texture* texture, const Rect& source,
                                    const Rect& dest, Color tint = Color::White()) = 0;
+
+    /// Draw a portion of a texture with rotation and origin
+    virtual void drawTextureRegionEx(const Texture* texture, const Rect& source,
+                                     const Rect& dest, Vec2 origin, float rotation,
+                                     Color tint = Color::White()) = 0;
 
     /// Draw a texture with full transform options
     virtual void drawTextureEx(const Texture* texture, Vec2 position,

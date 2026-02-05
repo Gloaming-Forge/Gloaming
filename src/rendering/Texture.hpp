@@ -75,6 +75,7 @@ private:
 };
 
 /// Manages loaded textures and atlases with caching
+/// Note: Textures are owned by the renderer, TextureManager just caches pointers
 class TextureManager {
 public:
     TextureManager() = default;
@@ -106,11 +107,12 @@ public:
     TextureAtlas* getAtlas(const std::string& name) const;
 
     /// Check if a texture is loaded
-    bool hasTexture(const std::string& path) const;
+    [[nodiscard]] bool hasTexture(const std::string& path) const;
 
 private:
     IRenderer* m_renderer = nullptr;
-    std::unordered_map<std::string, std::unique_ptr<Texture>> m_textures;
+    // Non-owning cache: renderer owns the textures, we just map paths to pointers
+    std::unordered_map<std::string, Texture*> m_textures;
     std::unordered_map<std::string, std::unique_ptr<TextureAtlas>> m_atlases;
 };
 

@@ -4,7 +4,7 @@
 #include "engine/Window.hpp"
 #include "engine/Input.hpp"
 #include "engine/Time.hpp"
-#include "rendering/RaylibRenderer.hpp"
+#include "rendering/IRenderer.hpp"
 #include "rendering/Camera.hpp"
 #include "rendering/Texture.hpp"
 #include "rendering/SpriteBatch.hpp"
@@ -46,7 +46,7 @@ private:
     Time   m_time;
 
     // Rendering systems
-    std::unique_ptr<RaylibRenderer> m_renderer;
+    std::unique_ptr<IRenderer> m_renderer;
     Camera m_camera;
     TextureManager m_textureManager;
     SpriteBatch m_spriteBatch;

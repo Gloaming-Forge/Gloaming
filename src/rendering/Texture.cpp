@@ -50,7 +50,7 @@ Texture* TextureManager::loadTexture(const std::string& path) {
     // Check cache first
     auto it = m_textures.find(path);
     if (it != m_textures.end()) {
-        return it->second.get();
+        return it->second;
     }
 
     if (!m_renderer) {
@@ -58,15 +58,15 @@ Texture* TextureManager::loadTexture(const std::string& path) {
         return nullptr;
     }
 
-    // Load via renderer
+    // Load via renderer (renderer owns the texture)
     Texture* texture = m_renderer->loadTexture(path);
     if (!texture) {
         LOG_ERROR("TextureManager: Failed to load texture '{}'", path);
         return nullptr;
     }
 
-    // Take ownership and cache
-    m_textures[path] = std::unique_ptr<Texture>(texture);
+    // Cache the pointer (non-owning)
+    m_textures[path] = texture;
     LOG_DEBUG("TextureManager: Loaded texture '{}' ({}x{})", path,
               texture->getWidth(), texture->getHeight());
     return texture;
@@ -75,7 +75,7 @@ Texture* TextureManager::loadTexture(const std::string& path) {
 Texture* TextureManager::getTexture(const std::string& path) const {
     auto it = m_textures.find(path);
     if (it != m_textures.end()) {
-        return it->second.get();
+        return it->second;
     }
     return nullptr;
 }
@@ -84,7 +84,7 @@ void TextureManager::unloadTexture(const std::string& path) {
     auto it = m_textures.find(path);
     if (it != m_textures.end()) {
         if (m_renderer) {
-            m_renderer->unloadTexture(it->second.get());
+            m_renderer->unloadTexture(it->second);
         }
         m_textures.erase(it);
         LOG_DEBUG("TextureManager: Unloaded texture '{}'", path);
@@ -94,7 +94,7 @@ void TextureManager::unloadTexture(const std::string& path) {
 void TextureManager::unloadAll() {
     if (m_renderer) {
         for (auto& [path, texture] : m_textures) {
-            m_renderer->unloadTexture(texture.get());
+            m_renderer->unloadTexture(texture);
         }
     }
     m_textures.clear();

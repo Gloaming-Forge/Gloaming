@@ -137,6 +137,20 @@ void RaylibRenderer::drawTextureRegion(const Texture* texture, const Rect& sourc
                    toRaylibColor(tint));
 }
 
+void RaylibRenderer::drawTextureRegionEx(const Texture* texture, const Rect& source,
+                                         const Rect& dest, Vec2 origin, float rotation,
+                                         Color tint) {
+    const ::Texture2D* rlTex = getRaylibTexture(texture);
+    if (!rlTex) return;
+
+    DrawTexturePro(*rlTex,
+                   toRaylibRect(source),
+                   toRaylibRect(dest),
+                   toRaylibVec2(origin),
+                   rotation,
+                   toRaylibColor(tint));
+}
+
 void RaylibRenderer::drawTextureEx(const Texture* texture, Vec2 position,
                                    float rotation, float scale, Color tint) {
     const ::Texture2D* rlTex = getRaylibTexture(texture);

@@ -160,35 +160,33 @@ void SpriteBatch::flush() {
 }
 
 void SpriteBatch::renderSprite(const Sprite& sprite) {
-    // Calculate destination rectangle
+    // Calculate destination rectangle size
     float width = sprite.sourceRect.width * sprite.scale.x;
     float height = sprite.sourceRect.height * sprite.scale.y;
 
-    // Apply origin offset
-    float destX = sprite.position.x - width * sprite.origin.x;
-    float destY = sprite.position.y - height * sprite.origin.y;
-
     // Transform to screen space if we have a camera
+    Vec2 screenPos = sprite.position;
     if (m_camera) {
-        Vec2 screenPos = m_camera->worldToScreen({destX + width * 0.5f,
-                                                   destY + height * 0.5f});
+        screenPos = m_camera->worldToScreen(sprite.position);
         float zoom = m_camera->getZoom();
         width *= zoom;
         height *= zoom;
-        destX = screenPos.x - width * 0.5f;
-        destY = screenPos.y - height * 0.5f;
     }
-
-    Rect destRect(destX, destY, width, height);
 
     // Use the renderer to draw
     if (sprite.rotation != 0.0f) {
-        // For rotated sprites, we need a more complex draw call
-        // The renderer's drawTextureRegion with rotation support would be ideal
-        // For now, use the basic version (rotation handled differently by backend)
-        m_renderer->drawTextureRegion(sprite.texture, sprite.sourceRect,
-                                      destRect, sprite.tint);
+        // For rotated sprites, position the dest rect at the sprite position
+        // and use origin (in pixels) to define the rotation pivot
+        Vec2 originPixels(width * sprite.origin.x, height * sprite.origin.y);
+        Rect destRect(screenPos.x, screenPos.y, width, height);
+        m_renderer->drawTextureRegionEx(sprite.texture, sprite.sourceRect,
+                                        destRect, originPixels, sprite.rotation,
+                                        sprite.tint);
     } else {
+        // For non-rotated sprites, apply origin offset to position
+        float destX = screenPos.x - width * sprite.origin.x;
+        float destY = screenPos.y - height * sprite.origin.y;
+        Rect destRect(destX, destY, width, height);
         m_renderer->drawTextureRegion(sprite.texture, sprite.sourceRect,
                                       destRect, sprite.tint);
     }

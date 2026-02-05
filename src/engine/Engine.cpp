@@ -1,5 +1,6 @@
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
+#include "rendering/RaylibRenderer.hpp"
 
 #include <raylib.h>
 

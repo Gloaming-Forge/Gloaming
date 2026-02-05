@@ -36,6 +36,10 @@ public:
     void drawTextureRegion(const Texture* texture, const Rect& source,
                           const Rect& dest, Color tint = Color::White()) override;
 
+    void drawTextureRegionEx(const Texture* texture, const Rect& source,
+                             const Rect& dest, Vec2 origin, float rotation,
+                             Color tint = Color::White()) override;
+
     void drawTextureEx(const Texture* texture, Vec2 position,
                        float rotation, float scale,
                        Color tint = Color::White()) override;

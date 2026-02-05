@@ -60,7 +60,7 @@ Vec2 Camera::screenToWorld(Vec2 screenPos) const {
 
     // Apply rotation (inverse)
     if (m_rotation != 0.0f) {
-        float radians = -m_rotation * (3.14159265358979f / 180.0f);
+        float radians = -m_rotation * DEG_TO_RAD;
         float cosR = std::cos(radians);
         float sinR = std::sin(radians);
         Vec2 rotated = {
@@ -78,7 +78,7 @@ Vec2 Camera::worldToScreen(Vec2 worldPos) const {
 
     // Apply rotation
     if (m_rotation != 0.0f) {
-        float radians = m_rotation * (3.14159265358979f / 180.0f);
+        float radians = m_rotation * DEG_TO_RAD;
         float cosR = std::cos(radians);
         float sinR = std::sin(radians);
         Vec2 rotated = {
@@ -100,7 +100,7 @@ Rect Camera::getVisibleArea() const {
 
     // When rotated, we need a larger bounding box
     if (m_rotation != 0.0f) {
-        float radians = std::abs(m_rotation) * (3.14159265358979f / 180.0f);
+        float radians = std::abs(m_rotation) * DEG_TO_RAD;
         float cosR = std::abs(std::cos(radians));
         float sinR = std::abs(std::sin(radians));
         float newWidth = visibleWidth * cosR + visibleHeight * sinR;
