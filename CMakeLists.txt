@@ -94,6 +94,12 @@ add_library(gloaming_engine STATIC
     src/rendering/RaylibRenderer.cpp
     # ECS (Stage 2)
     src/ecs/EntityFactory.cpp
+    # World (Stage 3)
+    src/world/Chunk.cpp
+    src/world/ChunkGenerator.cpp
+    src/world/ChunkManager.cpp
+    src/world/WorldFile.cpp
+    src/world/TileMap.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

@@ -72,6 +72,37 @@ bool Engine::init(const std::string& configPath) {
 
     LOG_INFO("ECS initialized");
 
+    // Initialize world system with default config
+    TileMapConfig tileMapConfig;
+    tileMapConfig.tileSize = m_tileRenderer.getTileSize();
+    tileMapConfig.chunkManager.loadRadiusChunks = 3;
+    tileMapConfig.chunkManager.unloadRadiusChunks = 5;
+    m_tileMap.setConfig(tileMapConfig);
+
+    // For demo: create a test world
+    std::string worldPath = "worlds/test_world";
+    if (!m_tileMap.loadWorld(worldPath)) {
+        // World doesn't exist, create it
+        uint64_t seed = 42;  // Demo seed
+        if (m_tileMap.createWorld(worldPath, "Test World", seed)) {
+            LOG_INFO("Created new test world with seed {}", seed);
+            // Set spawn point at surface level
+            m_tileMap.setSpawnPoint(0.0f, 80.0f * m_tileRenderer.getTileSize());
+        } else {
+            LOG_WARN("Failed to create test world (directory may be read-only)");
+        }
+    } else {
+        LOG_INFO("Loaded existing test world");
+    }
+
+    // Position camera at spawn point if world is loaded
+    if (m_tileMap.isWorldLoaded()) {
+        Vec2 spawn = m_tileMap.getSpawnPoint();
+        m_camera.setPosition(spawn.x, spawn.y);
+    }
+
+    LOG_INFO("World system initialized");
+
     m_running = true;
     LOG_INFO("Engine initialized successfully");
     return true;
@@ -132,6 +163,11 @@ void Engine::update(double dt) {
     if (m_input.isKeyDown(KEY_E)) {
         m_camera.zoom(zoomSpeed);
     }
+
+    // Update world chunk loading based on camera position
+    if (m_tileMap.isWorldLoaded()) {
+        m_tileMap.update(m_camera);
+    }
 }
 
 void Engine::render() {
@@ -141,11 +177,16 @@ void Engine::render() {
     // Render parallax background layers
     m_parallaxBg.render();
 
+    // Render world tiles
+    if (m_tileMap.isWorldLoaded()) {
+        m_tileMap.render(m_tileRenderer, m_camera);
+    }
+
     // Run ECS render systems (dt=0 for render phase, timing not needed)
     m_systemScheduler.render(0.0f);
 
     // Stage 1: draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.1.0", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 3: Chunk System", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -158,13 +199,28 @@ void Engine::render() {
              camPos.x, camPos.y, m_camera.getZoom());
     m_renderer->drawText(camText, {20, 80}, 16, Color(100, 200, 255, 255));
 
-    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | F11: Fullscreen", {20, 110}, 16, Color::Gray());
+    // Chunk info
+    if (m_tileMap.isWorldLoaded()) {
+        const auto& stats = m_tileMap.getStats();
+        char chunkText[128];
+        snprintf(chunkText, sizeof(chunkText), "Chunks: %zu loaded | %zu dirty | Rendered: %zu tiles",
+                 stats.loadedChunks, stats.dirtyChunks, m_tileRenderer.getTilesRendered());
+        m_renderer->drawText(chunkText, {20, 110}, 16, Color(200, 200, 100, 255));
+    }
+
+    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | F11: Fullscreen", {20, 140}, 16, Color::Gray());
 
     m_renderer->endFrame();
 }
 
 void Engine::shutdown() {
     LOG_INFO("Shutting down...");
+
+    // Close world (auto-saves if enabled)
+    if (m_tileMap.isWorldLoaded()) {
+        LOG_INFO("Closing world...");
+        m_tileMap.closeWorld();
+    }
 
     // Shutdown ECS
     m_systemScheduler.shutdown();

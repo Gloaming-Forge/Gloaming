@@ -13,6 +13,7 @@
 #include "ecs/Registry.hpp"
 #include "ecs/Systems.hpp"
 #include "ecs/EntityFactory.hpp"
+#include "world/TileMap.hpp"
 
 #include <string>
 #include <memory>
@@ -43,6 +44,9 @@ public:
     SystemScheduler& getSystemScheduler() { return m_systemScheduler; }
     EntityFactory& getEntityFactory() { return m_entityFactory; }
 
+    // World accessors
+    TileMap& getTileMap() { return m_tileMap; }
+
 private:
     void processInput();
     void update(double dt);
@@ -65,6 +69,9 @@ private:
     Registry m_registry;
     SystemScheduler m_systemScheduler;
     EntityFactory m_entityFactory;
+
+    // World systems
+    TileMap m_tileMap;
 
     bool m_running = false;
 };
