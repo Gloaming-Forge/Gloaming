@@ -357,13 +357,19 @@ Color EntityFactory::parseColor(const nlohmann::json& json) {
         std::string str = json.get<std::string>();
         // Parse hex color like "#RRGGBB" or "#RRGGBBAA"
         if (str.length() >= 7 && str[0] == '#') {
-            unsigned int hex = std::stoul(str.substr(1), nullptr, 16);
-            if (str.length() == 7) {
-                return Color((hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF, 255);
-            } else if (str.length() == 9) {
-                return Color((hex >> 24) & 0xFF, (hex >> 16) & 0xFF,
-                            (hex >> 8) & 0xFF, hex & 0xFF);
+            try {
+                unsigned int hex = std::stoul(str.substr(1), nullptr, 16);
+                if (str.length() == 7) {
+                    return Color((hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF, 255);
+                } else if (str.length() == 9) {
+                    return Color((hex >> 24) & 0xFF, (hex >> 16) & 0xFF,
+                                (hex >> 8) & 0xFF, hex & 0xFF);
+                }
+            } catch (const std::exception& e) {
+                LOG_WARN("Invalid hex color string '{}': {}", str, e.what());
             }
+        } else {
+            LOG_WARN("Invalid color string format '{}', expected #RRGGBB or #RRGGBBAA", str);
         }
     }
     return Color::White();

@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cmath>
+#include <algorithm>
 #include <functional>
 
 namespace gloaming {
