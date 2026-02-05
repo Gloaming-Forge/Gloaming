@@ -45,10 +45,16 @@ void Log::shutdown() {
 }
 
 std::shared_ptr<spdlog::logger>& Log::getEngineLogger() {
+    if (!s_engineLogger) {
+        init(); // Lazy initialization with defaults
+    }
     return s_engineLogger;
 }
 
 std::shared_ptr<spdlog::logger>& Log::getModLogger() {
+    if (!s_modLogger) {
+        init(); // Lazy initialization with defaults
+    }
     return s_modLogger;
 }
 

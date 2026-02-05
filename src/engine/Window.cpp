@@ -5,10 +5,11 @@
 namespace gloaming {
 
 bool Window::init(const WindowConfig& config) {
+    unsigned int flags = FLAG_WINDOW_RESIZABLE;
     if (config.vsync) {
-        SetConfigFlags(FLAG_VSYNC_HINT);
+        flags |= FLAG_VSYNC_HINT;
     }
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    SetConfigFlags(flags);
 
     InitWindow(config.width, config.height, config.title.c_str());
 
