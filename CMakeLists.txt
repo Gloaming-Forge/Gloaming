@@ -92,6 +92,8 @@ add_library(gloaming_engine STATIC
     src/rendering/TileRenderer.cpp
     src/rendering/ParallaxBackground.cpp
     src/rendering/RaylibRenderer.cpp
+    # ECS (Stage 2)
+    src/ecs/EntityFactory.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

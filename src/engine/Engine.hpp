@@ -10,6 +10,9 @@
 #include "rendering/SpriteBatch.hpp"
 #include "rendering/TileRenderer.hpp"
 #include "rendering/ParallaxBackground.hpp"
+#include "ecs/Registry.hpp"
+#include "ecs/Systems.hpp"
+#include "ecs/EntityFactory.hpp"
 
 #include <string>
 #include <memory>
@@ -35,6 +38,11 @@ public:
     TileRenderer& getTileRenderer() { return m_tileRenderer; }
     ParallaxBackground& getParallaxBackground() { return m_parallaxBg; }
 
+    // ECS accessors
+    Registry& getRegistry() { return m_registry; }
+    SystemScheduler& getSystemScheduler() { return m_systemScheduler; }
+    EntityFactory& getEntityFactory() { return m_entityFactory; }
+
 private:
     void processInput();
     void update(double dt);
@@ -52,6 +60,11 @@ private:
     SpriteBatch m_spriteBatch;
     TileRenderer m_tileRenderer;
     ParallaxBackground m_parallaxBg;
+
+    // ECS systems
+    Registry m_registry;
+    SystemScheduler m_systemScheduler;
+    EntityFactory m_entityFactory;
 
     bool m_running = false;
 };

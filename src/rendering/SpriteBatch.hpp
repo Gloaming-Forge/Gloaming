@@ -7,8 +7,8 @@
 
 namespace gloaming {
 
-/// Individual sprite in a batch
-struct Sprite {
+/// Individual sprite data for batched rendering
+struct SpriteData {
     const Texture* texture = nullptr;
     Rect sourceRect;       // Region of texture to draw (for atlases)
     Vec2 position;         // World position
@@ -18,8 +18,8 @@ struct Sprite {
     Color tint = Color::White();
     int layer = 0;         // Draw order (lower = drawn first)
 
-    Sprite() = default;
-    Sprite(const Texture* tex, Vec2 pos)
+    SpriteData() = default;
+    SpriteData(const Texture* tex, Vec2 pos)
         : texture(tex), position(pos) {
         if (tex) {
             sourceRect = Rect(0, 0, static_cast<float>(tex->getWidth()),
@@ -45,7 +45,7 @@ public:
     void begin();
 
     /// Add a sprite to the batch
-    void draw(const Sprite& sprite);
+    void draw(const SpriteData& sprite);
 
     /// Convenience: draw a texture at position
     void draw(const Texture* texture, Vec2 position, Color tint = Color::White());
@@ -89,13 +89,13 @@ private:
     IRenderer* m_renderer = nullptr;
     const Camera* m_camera = nullptr;
 
-    std::vector<Sprite> m_sprites;
+    std::vector<SpriteData> m_sprites;
     bool m_batching = false;
     bool m_sortEnabled = true;
     bool m_cullingEnabled = true;
     size_t m_lastDrawCalls = 0;
 
-    void renderSprite(const Sprite& sprite);
+    void renderSprite(const SpriteData& sprite);
 };
 
 } // namespace gloaming

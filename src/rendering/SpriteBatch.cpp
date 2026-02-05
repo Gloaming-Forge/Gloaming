@@ -13,7 +13,7 @@ void SpriteBatch::begin() {
     m_batching = true;
 }
 
-void SpriteBatch::draw(const Sprite& sprite) {
+void SpriteBatch::draw(const SpriteData& sprite) {
     if (!m_batching) {
         LOG_WARN("SpriteBatch::draw() called without begin()");
         return;
@@ -27,7 +27,7 @@ void SpriteBatch::draw(const Sprite& sprite) {
 void SpriteBatch::draw(const Texture* texture, Vec2 position, Color tint) {
     if (!texture) return;
 
-    Sprite sprite;
+    SpriteData sprite;
     sprite.texture = texture;
     sprite.position = position;
     sprite.sourceRect = Rect(0, 0, static_cast<float>(texture->getWidth()),
@@ -40,7 +40,7 @@ void SpriteBatch::draw(const Texture* texture, const Rect& sourceRect,
                        Vec2 position, Color tint) {
     if (!texture) return;
 
-    Sprite sprite;
+    SpriteData sprite;
     sprite.texture = texture;
     sprite.position = position;
     sprite.sourceRect = sourceRect;
@@ -53,7 +53,7 @@ void SpriteBatch::draw(const Texture* texture, const Rect& sourceRect,
                        Color tint, int layer) {
     if (!texture) return;
 
-    Sprite sprite;
+    SpriteData sprite;
     sprite.texture = texture;
     sprite.sourceRect = sourceRect;
     sprite.position = position;
@@ -75,7 +75,7 @@ void SpriteBatch::draw(const TextureAtlas* atlas, const std::string& regionName,
         return;
     }
 
-    Sprite sprite;
+    SpriteData sprite;
     sprite.texture = atlas->getTexture();
     sprite.sourceRect = region->bounds;
     sprite.position = position;
@@ -95,7 +95,7 @@ void SpriteBatch::draw(const TextureAtlas* atlas, const std::string& regionName,
         return;
     }
 
-    Sprite sprite;
+    SpriteData sprite;
     sprite.texture = atlas->getTexture();
     sprite.sourceRect = region->bounds;
     sprite.position = position;
@@ -130,14 +130,14 @@ void SpriteBatch::flush() {
     // Sort by layer if enabled
     if (m_sortEnabled) {
         std::stable_sort(m_sprites.begin(), m_sprites.end(),
-            [](const Sprite& a, const Sprite& b) {
+            [](const SpriteData& a, const SpriteData& b) {
                 return a.layer < b.layer;
             });
     }
 
     // Render each sprite
     m_lastDrawCalls = 0;
-    for (const Sprite& sprite : m_sprites) {
+    for (const SpriteData& sprite : m_sprites) {
         // Culling check
         if (m_cullingEnabled && m_camera) {
             float width = sprite.sourceRect.width * sprite.scale.x;
@@ -159,7 +159,7 @@ void SpriteBatch::flush() {
     m_sprites.clear();
 }
 
-void SpriteBatch::renderSprite(const Sprite& sprite) {
+void SpriteBatch::renderSprite(const SpriteData& sprite) {
     // Calculate destination rectangle size
     float width = sprite.sourceRect.width * sprite.scale.x;
     float height = sprite.sourceRect.height * sprite.scale.y;
