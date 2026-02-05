@@ -1359,18 +1359,20 @@ mods/base-game/
 
 ---
 
-### Stage 4: Physics (Week 11-13)
+### Stage 4: Physics (Week 11-13) ✓
 **Goal:** Solid collision
 
-- [ ] AABB collision detection
-- [ ] Tile collision response
-- [ ] Gravity and jumping
-- [ ] Slopes (45°)
-- [ ] One-way platforms
-- [ ] Swept collision for fast objects
-- [ ] Trigger volumes
+- [x] AABB collision detection
+- [x] Tile collision response
+- [x] Gravity and jumping
+- [x] Slopes (45°)
+- [x] One-way platforms
+- [x] Swept collision for fast objects
+- [x] Trigger volumes
 
 **Deliverable:** Player walks, jumps, collides with world
+
+**Implemented:** `src/physics/` contains AABB (collision primitives with center+halfExtents representation, intersection tests, swept collision), Collision (entity-to-entity collision detection with layer/mask filtering), TileCollision (tile-based collision response with slope and one-way platform support), Trigger (trigger volume tracking with enter/stay/exit callbacks), Raycast (DDA-based tile raycasting, entity raycasting, line-of-sight), PhysicsSystem (main system integrating gravity, velocity, tile collision, entity collision, triggers). 581-line test suite covering AABB operations, swept collision, raycasting, collision layers, and integration tests.
 
 ---
 

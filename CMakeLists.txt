@@ -100,6 +100,8 @@ add_library(gloaming_engine STATIC
     src/world/ChunkManager.cpp
     src/world/WorldFile.cpp
     src/world/TileMap.cpp
+    # Physics (Stage 4)
+    src/physics/PhysicsSystem.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC
