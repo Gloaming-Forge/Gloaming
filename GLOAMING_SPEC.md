@@ -1296,16 +1296,18 @@ mods/base-game/
 
 ## 8. Development Stages
 
-### Stage 0: Project Skeleton (Week 1-2)
+### Stage 0: Project Skeleton (Week 1-2) ✓
 **Goal:** Compilable project with dependencies
 
-- [ ] CMake setup with Raylib, EnTT, LuaJIT, nlohmann/json
-- [ ] Basic window creation and game loop
-- [ ] Logging system
-- [ ] Configuration file loading
-- [ ] Debug console (imgui?)
+- [x] CMake setup with Raylib, EnTT, Lua 5.4/sol2, nlohmann/json, spdlog
+- [x] Basic window creation and game loop
+- [x] Logging system
+- [x] Configuration file loading
+- [ ] Debug console (imgui?) — deferred to post-MVP
 
 **Deliverable:** Window opens, logs "Hello World", reads config
+
+**Implemented:** `src/engine/` contains Engine, Window, Input, Config, Log, Time classes. 21 unit tests (GoogleTest) for Config, Log, Time. Fixed-timestep game loop. JSON config with dot-notation access.
 
 ---
 
