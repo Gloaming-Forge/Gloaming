@@ -1328,30 +1328,34 @@ mods/base-game/
 
 ---
 
-### Stage 2: ECS Foundation (Week 6-7)
+### Stage 2: ECS Foundation (Week 6-7) ✓
 **Goal:** Entity management working
 
-- [ ] EnTT integration
-- [ ] Core components defined
-- [ ] System scheduling
-- [ ] Entity factory (spawn from definition)
-- [ ] Entity queries and iteration
+- [x] EnTT integration
+- [x] Core components defined
+- [x] System scheduling
+- [x] Entity factory (spawn from definition)
+- [x] Entity queries and iteration
 
 **Deliverable:** Spawn entities, move them, render them
 
+**Implemented:** `src/ecs/` contains Registry (EnTT wrapper with convenience methods), Components (Transform, Velocity, Sprite with animations, Collider with layer/mask, Health with invincibility, LightSource with flicker, ParticleEmitter, Trigger, NetworkSync, tag components, Gravity, Name, Lifetime), Systems (base System class with phase enum, SystemScheduler for multi-phase execution), CoreSystems (MovementSystem, AnimationSystem, LifetimeSystem, HealthSystem, LightUpdateSystem, SpriteRenderSystem, ColliderDebugRenderSystem), EntityFactory (JSON-based entity definitions with spawn callbacks). Full support for entity queries via view(), each(), findFirst(), findAll(), collect().
+
 ---
 
-### Stage 3: Chunk System (Week 8-10)
+### Stage 3: Chunk System (Week 8-10) ✓
 **Goal:** Infinite world support
 
-- [ ] Chunk data structure
-- [ ] Chunk manager (load/unload)
-- [ ] Chunk serialization (save/load)
-- [ ] Chunk generation hooks (placeholder noise)
-- [ ] Tile modification (set/get)
-- [ ] Dirty chunk tracking for re-render
+- [x] Chunk data structure
+- [x] Chunk manager (load/unload)
+- [x] Chunk serialization (save/load)
+- [x] Chunk generation hooks (placeholder noise)
+- [x] Tile modification (set/get)
+- [x] Dirty chunk tracking for re-render
 
 **Deliverable:** Walk infinitely, changes persist through save/load
+
+**Implemented:** `src/world/` contains Chunk (64x64 tile container with dirty flags and coordinate conversion), ChunkGenerator (Noise utilities for 1D/2D smooth noise and fractal noise, callback system for mod-provided generation, default terrain generator), ChunkManager (load/unload radius management, configurable max loaded chunks, auto-save on unload, stats tracking), WorldFile (binary serialization with magic numbers GLWF/GLCF, CRC32 checksums for data integrity, world metadata with stats), TileMap (unified interface combining ChunkManager+WorldFile+rendering with [[nodiscard]] attributes). 72 unit tests covering coordinate conversion, chunk operations, world persistence, and tile access.
 
 ---
 
