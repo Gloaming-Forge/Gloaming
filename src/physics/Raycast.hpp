@@ -11,6 +11,10 @@
 
 namespace gloaming {
 
+// Math constants for raycasting (duplicated from IRenderer.hpp to avoid circular deps)
+constexpr float RAYCAST_PI = 3.14159265358979323846f;
+constexpr float RAYCAST_DEG_TO_RAD = RAYCAST_PI / 180.0f;
+
 /// Result of a raycast
 struct RaycastHit {
     bool hit = false;
@@ -118,10 +122,16 @@ public:
         // Check if intersection is behind the ray origin
         if (tMax < 0.0f) return -1.0f;
 
-        if (outNormal) *outNormal = normal;
-
-        // Return the closer intersection (tMin if positive, otherwise we're inside the box)
-        return tMin >= 0.0f ? tMin : 0.0f;
+        if (tMin >= 0.0f) {
+            // Normal hit from outside
+            if (outNormal) *outNormal = normal;
+            return tMin;
+        } else {
+            // Ray origin is inside the box - return distance 0 with zero normal
+            // (no meaningful surface normal when starting inside)
+            if (outNormal) *outNormal = Vec2(0.0f, 0.0f);
+            return 0.0f;
+        }
     }
 
     /// Raycast against tiles using DDA (Digital Differential Analyzer) algorithm
@@ -269,8 +279,8 @@ public:
         std::vector<RaycastHit> results;
         results.reserve(rayCount);
 
-        float halfAngle = coneAngle * 0.5f * DEG_TO_RAD;
-        float angleStep = rayCount > 1 ? coneAngle * DEG_TO_RAD / (rayCount - 1) : 0.0f;
+        float halfAngle = coneAngle * 0.5f * RAYCAST_DEG_TO_RAD;
+        float angleStep = rayCount > 1 ? coneAngle * RAYCAST_DEG_TO_RAD / (rayCount - 1) : 0.0f;
         float startAngle = std::atan2(direction.y, direction.x) - halfAngle;
 
         for (int i = 0; i < rayCount; ++i) {

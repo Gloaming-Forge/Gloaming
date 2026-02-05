@@ -213,24 +213,45 @@ inline SweepResult sweepAABB(const AABB& a, Vec2 velocity, const AABB& b) {
     AABB expanded = AABB(b.center, Vec2(b.halfExtents.x + a.halfExtents.x,
                                          b.halfExtents.y + a.halfExtents.y));
 
-    // Slab intersection test
-    Vec2 invVel;
-    invVel.x = velocity.x != 0.0f ? 1.0f / velocity.x : std::numeric_limits<float>::max();
-    invVel.y = velocity.y != 0.0f ? 1.0f / velocity.y : std::numeric_limits<float>::max();
-
     Vec2 expMin = expanded.getMin();
     Vec2 expMax = expanded.getMax();
 
-    float t1x = (expMin.x - a.center.x) * invVel.x;
-    float t2x = (expMax.x - a.center.x) * invVel.x;
-    float t1y = (expMin.y - a.center.y) * invVel.y;
-    float t2y = (expMax.y - a.center.y) * invVel.y;
+    // Slab intersection test with proper zero-velocity handling
+    float tMinX, tMaxX, tMinY, tMaxY;
 
-    // Sort times
-    float tMinX = std::min(t1x, t2x);
-    float tMaxX = std::max(t1x, t2x);
-    float tMinY = std::min(t1y, t2y);
-    float tMaxY = std::max(t1y, t2y);
+    // X axis
+    if (std::abs(velocity.x) < 1e-8f) {
+        // No X movement - check if we're within X slab
+        if (a.center.x < expMin.x || a.center.x > expMax.x) {
+            return result; // Outside X slab, no collision possible
+        }
+        // Inside X slab - use infinite time range for X
+        tMinX = -std::numeric_limits<float>::max();
+        tMaxX = std::numeric_limits<float>::max();
+    } else {
+        float invVelX = 1.0f / velocity.x;
+        float t1x = (expMin.x - a.center.x) * invVelX;
+        float t2x = (expMax.x - a.center.x) * invVelX;
+        tMinX = std::min(t1x, t2x);
+        tMaxX = std::max(t1x, t2x);
+    }
+
+    // Y axis
+    if (std::abs(velocity.y) < 1e-8f) {
+        // No Y movement - check if we're within Y slab
+        if (a.center.y < expMin.y || a.center.y > expMax.y) {
+            return result; // Outside Y slab, no collision possible
+        }
+        // Inside Y slab - use infinite time range for Y
+        tMinY = -std::numeric_limits<float>::max();
+        tMaxY = std::numeric_limits<float>::max();
+    } else {
+        float invVelY = 1.0f / velocity.y;
+        float t1y = (expMin.y - a.center.y) * invVelY;
+        float t2y = (expMax.y - a.center.y) * invVelY;
+        tMinY = std::min(t1y, t2y);
+        tMaxY = std::max(t1y, t2y);
+    }
 
     // Find intersection of time ranges
     float tEnter = std::max(tMinX, tMinY);

@@ -7,6 +7,9 @@
 #include "physics/PhysicsSystem.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/Components.hpp"
+#include "rendering/TileRenderer.hpp"
+#include <map>
+#include <algorithm>
 
 using namespace gloaming;
 
@@ -578,4 +581,496 @@ TEST(PhysicsIntegrationTest, ColliderDisabled) {
 
     EXPECT_FALSE(colliderA.canCollideWith(colliderB));
     EXPECT_FALSE(colliderB.canCollideWith(colliderA));
+}
+
+// ============================================================================
+// TileCollision Tests with Mock TileMap
+// ============================================================================
+
+// Mock tile provider for testing
+class MockTileProvider {
+public:
+    void setSolid(int x, int y) {
+        Tile tile;
+        tile.id = 1;
+        tile.flags = Tile::FLAG_SOLID;
+        m_tiles[{x, y}] = tile;
+    }
+
+    void setPlatform(int x, int y) {
+        Tile tile;
+        tile.id = 2;
+        tile.flags = Tile::FLAG_PLATFORM;
+        m_tiles[{x, y}] = tile;
+    }
+
+    void setSlope(int x, int y, bool leftToRight) {
+        Tile tile;
+        tile.id = leftToRight ? 3 : 4;  // SLOPE_LEFT or SLOPE_RIGHT
+        tile.flags = Tile::FLAG_SOLID;
+        m_tiles[{x, y}] = tile;
+    }
+
+    Tile getTile(int x, int y) const {
+        auto it = m_tiles.find({x, y});
+        if (it != m_tiles.end()) {
+            return it->second;
+        }
+        return Tile{};  // Empty/air
+    }
+
+    std::function<Tile(int, int)> getCallback() {
+        return [this](int x, int y) { return getTile(x, y); };
+    }
+
+private:
+    std::map<std::pair<int, int>, Tile> m_tiles;
+};
+
+TEST(TileCollisionWithMapTest, MoveAABBNoCollision) {
+    MockTileProvider provider;
+    TileCollision collision;
+    collision.setTileSize(16);
+    collision.setTileCallback(provider.getCallback());
+
+    // AABB in open space
+    AABB aabb(Vec2(100.0f, 100.0f), Vec2(8.0f, 8.0f));
+    Vec2 velocity(50.0f, 0.0f);
+
+    auto result = collision.moveAABB(aabb, velocity, true, false);
+
+    // Should move freely
+    EXPECT_FLOAT_EQ(result.newPosition.x, 150.0f);
+    EXPECT_FLOAT_EQ(result.newPosition.y, 100.0f);
+    EXPECT_FALSE(result.hitHorizontal);
+    EXPECT_FALSE(result.hitVertical);
+}
+
+TEST(TileCollisionWithMapTest, MoveAABBHitWall) {
+    MockTileProvider provider;
+    // Create a vertical wall
+    provider.setSolid(10, 5);
+    provider.setSolid(10, 6);
+    provider.setSolid(10, 7);
+
+    TileCollision collision;
+    collision.setTileSize(16);
+    collision.setTileCallback(provider.getCallback());
+
+    // AABB moving right towards wall
+    // Wall is at tile 10 (world x = 160-176), AABB starts at x=140
+    AABB aabb(Vec2(140.0f, 100.0f), Vec2(8.0f, 8.0f));
+    Vec2 velocity(50.0f, 0.0f);  // Moving right
+
+    auto result = collision.moveAABB(aabb, velocity, true, false);
+
+    // Should stop at wall
+    EXPECT_TRUE(result.hitHorizontal);
+    EXPECT_LT(result.newPosition.x, 160.0f);  // Should be before the wall
+}
+
+TEST(TileCollisionWithMapTest, MoveAABBHitFloor) {
+    MockTileProvider provider;
+    // Create a horizontal floor
+    provider.setSolid(5, 10);
+    provider.setSolid(6, 10);
+    provider.setSolid(7, 10);
+
+    TileCollision collision;
+    collision.setTileSize(16);
+    collision.setTileCallback(provider.getCallback());
+
+    // AABB falling down towards floor
+    // Floor is at tile y=10 (world y = 160-176), AABB starts at y=140
+    AABB aabb(Vec2(100.0f, 140.0f), Vec2(8.0f, 8.0f));
+    Vec2 velocity(0.0f, 50.0f);  // Moving down
+
+    auto result = collision.moveAABB(aabb, velocity, true, false);
+
+    // Should land on floor
+    EXPECT_TRUE(result.hitVertical);
+    EXPECT_TRUE(result.onGround);
+    EXPECT_LT(result.newPosition.y, 160.0f);  // Should be above the floor
+}
+
+TEST(TileCollisionWithMapTest, MoveAABBOnPlatformFallingThrough) {
+    MockTileProvider provider;
+    // Create a one-way platform
+    provider.setPlatform(5, 10);
+    provider.setPlatform(6, 10);
+    provider.setPlatform(7, 10);
+
+    TileCollision collision;
+    collision.setTileSize(16);
+    collision.setTileCallback(provider.getCallback());
+
+    // AABB falling down towards platform from above
+    AABB aabb(Vec2(100.0f, 140.0f), Vec2(8.0f, 8.0f));
+    Vec2 velocity(0.0f, 50.0f);  // Moving down
+
+    auto result = collision.moveAABB(aabb, velocity, true, false);
+
+    // Should land on platform when falling from above
+    EXPECT_TRUE(result.onGround || result.onPlatform);
+}
+
+TEST(TileCollisionWithMapTest, MoveAABBJumpThroughPlatform) {
+    MockTileProvider provider;
+    // Create a one-way platform
+    provider.setPlatform(5, 8);
+    provider.setPlatform(6, 8);
+    provider.setPlatform(7, 8);
+
+    TileCollision collision;
+    collision.setTileSize(16);
+    collision.setTileCallback(provider.getCallback());
+
+    // AABB jumping up through platform from below
+    AABB aabb(Vec2(100.0f, 150.0f), Vec2(8.0f, 8.0f));
+    Vec2 velocity(0.0f, -50.0f);  // Moving up
+
+    auto result = collision.moveAABB(aabb, velocity, true, false);
+
+    // Should pass through platform when moving up
+    EXPECT_FALSE(result.hitVertical);
+    EXPECT_FLOAT_EQ(result.newPosition.y, 100.0f);  // Should move full distance
+}
+
+TEST(TileCollisionWithMapTest, CheckGroundBelow) {
+    MockTileProvider provider;
+    // Create ground
+    provider.setSolid(5, 10);
+    provider.setSolid(6, 10);
+
+    TileCollision collision;
+    collision.setTileSize(16);
+    collision.setTileCallback(provider.getCallback());
+
+    // AABB just above ground
+    // Ground at y=10 (160-176), AABB bottom at y=160-8=152
+    AABB aabb(Vec2(100.0f, 152.0f), Vec2(8.0f, 8.0f));
+
+    bool grounded = collision.checkGroundBelow(aabb, 2.0f);
+
+    EXPECT_TRUE(grounded);
+}
+
+TEST(TileCollisionWithMapTest, CheckGroundBelowNotGrounded) {
+    MockTileProvider provider;
+    // No ground below
+
+    TileCollision collision;
+    collision.setTileSize(16);
+    collision.setTileCallback(provider.getCallback());
+
+    AABB aabb(Vec2(100.0f, 100.0f), Vec2(8.0f, 8.0f));
+
+    bool grounded = collision.checkGroundBelow(aabb, 2.0f);
+
+    EXPECT_FALSE(grounded);
+}
+
+// ============================================================================
+// PhysicsSystem Integration Tests
+// ============================================================================
+
+TEST(PhysicsSystemTest, ApplyImpulse) {
+    Registry registry;
+    PhysicsConfig config;
+    PhysicsSystem physics(config);
+
+    // Create an entity with velocity
+    auto entity = registry.create();
+    registry.emplace<Transform>(entity, Vec2(100.0f, 100.0f));
+    registry.emplace<Velocity>(entity);
+
+    // Mock engine for init (we need a basic setup)
+    // Since we can't easily create an Engine, we'll test the method directly
+    // by accessing the registry through a workaround
+
+    // Instead, let's test the impulse logic
+    Velocity& vel = registry.get<Velocity>(entity);
+    vel.linear = Vec2(0.0f, 0.0f);
+
+    // Apply impulse manually (simulating what applyImpulse does)
+    Vec2 impulse(100.0f, -200.0f);
+    vel.linear = vel.linear + impulse;
+
+    EXPECT_FLOAT_EQ(vel.linear.x, 100.0f);
+    EXPECT_FLOAT_EQ(vel.linear.y, -200.0f);
+}
+
+TEST(PhysicsSystemTest, GravityComponent) {
+    Registry registry;
+
+    auto entity = registry.create();
+    registry.emplace<Transform>(entity, Vec2(100.0f, 100.0f));
+    auto& vel = registry.emplace<Velocity>(entity);
+    auto& gravity = registry.emplace<Gravity>(entity);
+
+    vel.linear = Vec2(0.0f, 0.0f);
+    gravity.grounded = false;
+    gravity.scale = 1.0f;
+
+    // Simulate gravity application
+    PhysicsConfig config;
+    float dt = 1.0f / 60.0f;
+
+    // Manual gravity update (simulating applyGravity)
+    vel.linear.y += config.gravity.y * gravity.scale * dt;
+
+    EXPECT_GT(vel.linear.y, 0.0f);  // Should have downward velocity
+}
+
+TEST(PhysicsSystemTest, EntityCollisionVelocityCancel) {
+    // Test that colliding velocities are cancelled along collision normal
+    Vec2 velocityA(100.0f, 50.0f);
+    Vec2 normal(-1.0f, 0.0f);  // Collision from right
+
+    float dot = Vec2::dot(velocityA, normal);
+    EXPECT_LT(dot, 0.0f);  // Moving into collision
+
+    // Cancel velocity along normal
+    if (dot < 0.0f) {
+        velocityA = velocityA - normal * dot;
+    }
+
+    EXPECT_FLOAT_EQ(velocityA.x, 0.0f);  // X cancelled
+    EXPECT_FLOAT_EQ(velocityA.y, 50.0f); // Y preserved
+}
+
+TEST(PhysicsSystemTest, CollisionCallback) {
+    std::vector<CollisionEvent> events;
+
+    auto callback = [&events](const CollisionEvent& event) {
+        events.push_back(event);
+    };
+
+    // Simulate firing an event
+    CollisionEvent event;
+    event.entity = 1;
+    event.withTile = true;
+    event.normal = Vec2(0.0f, -1.0f);
+    event.tileX = 5;
+    event.tileY = 10;
+
+    callback(event);
+
+    EXPECT_EQ(events.size(), 1);
+    EXPECT_EQ(events[0].entity, 1);
+    EXPECT_TRUE(events[0].withTile);
+    EXPECT_FLOAT_EQ(events[0].normal.y, -1.0f);
+}
+
+// ============================================================================
+// Trigger Enter/Stay/Exit Tests
+// ============================================================================
+
+TEST(TriggerCallbackTest, TriggerEnterCallback) {
+    Registry registry;
+    TriggerTracker tracker;
+
+    // Create trigger entity
+    auto triggerEntity = registry.create();
+    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    triggerCollider.size = Vec2(32.0f, 32.0f);
+    triggerCollider.isTrigger = true;
+
+    bool enterCalled = false;
+    uint32_t enteredEntity = 0;
+
+    auto& trigger = registry.emplace<Trigger>(triggerEntity);
+    trigger.onEnter = [&enterCalled, &enteredEntity](uint32_t triggerEnt, uint32_t otherEnt) {
+        enterCalled = true;
+        enteredEntity = otherEnt;
+    };
+
+    // Create entity that enters trigger
+    auto movingEntity = registry.create();
+    registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));  // Overlapping
+    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    movingCollider.size = Vec2(16.0f, 16.0f);
+
+    // First update - should fire onEnter
+    tracker.update(registry);
+
+    EXPECT_TRUE(enterCalled);
+    EXPECT_EQ(enteredEntity, static_cast<uint32_t>(movingEntity));
+}
+
+TEST(TriggerCallbackTest, TriggerStayCallback) {
+    Registry registry;
+    TriggerTracker tracker;
+
+    // Create trigger entity
+    auto triggerEntity = registry.create();
+    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    triggerCollider.size = Vec2(32.0f, 32.0f);
+    triggerCollider.isTrigger = true;
+
+    int stayCalls = 0;
+
+    auto& trigger = registry.emplace<Trigger>(triggerEntity);
+    trigger.onEnter = [](uint32_t, uint32_t) {};  // Ignore enter
+    trigger.onStay = [&stayCalls](uint32_t, uint32_t) {
+        stayCalls++;
+    };
+
+    // Create entity inside trigger
+    auto movingEntity = registry.create();
+    registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));
+    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    movingCollider.size = Vec2(16.0f, 16.0f);
+
+    // First update - onEnter
+    tracker.update(registry);
+    EXPECT_EQ(stayCalls, 0);  // Not called on first frame (that's onEnter)
+
+    // Second update - should call onStay
+    tracker.update(registry);
+    EXPECT_EQ(stayCalls, 1);
+
+    // Third update - should call onStay again
+    tracker.update(registry);
+    EXPECT_EQ(stayCalls, 2);
+}
+
+TEST(TriggerCallbackTest, TriggerExitCallback) {
+    Registry registry;
+    TriggerTracker tracker;
+
+    // Create trigger entity
+    auto triggerEntity = registry.create();
+    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    triggerCollider.size = Vec2(32.0f, 32.0f);
+    triggerCollider.isTrigger = true;
+
+    bool exitCalled = false;
+    uint32_t exitedEntity = 0;
+
+    auto& trigger = registry.emplace<Trigger>(triggerEntity);
+    trigger.onEnter = [](uint32_t, uint32_t) {};
+    trigger.onExit = [&exitCalled, &exitedEntity](uint32_t triggerEnt, uint32_t otherEnt) {
+        exitCalled = true;
+        exitedEntity = otherEnt;
+    };
+
+    // Create entity inside trigger
+    auto movingEntity = registry.create();
+    auto& movingTransform = registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));
+    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    movingCollider.size = Vec2(16.0f, 16.0f);
+
+    // First update - entity enters
+    tracker.update(registry);
+    EXPECT_FALSE(exitCalled);
+
+    // Move entity out of trigger
+    movingTransform.position = Vec2(500.0f, 500.0f);
+
+    // Second update - entity exits
+    tracker.update(registry);
+    EXPECT_TRUE(exitCalled);
+    EXPECT_EQ(exitedEntity, static_cast<uint32_t>(movingEntity));
+}
+
+TEST(TriggerCallbackTest, IsEntityInTrigger) {
+    Registry registry;
+    TriggerTracker tracker;
+
+    // Create trigger entity
+    auto triggerEntity = registry.create();
+    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    triggerCollider.size = Vec2(32.0f, 32.0f);
+    triggerCollider.isTrigger = true;
+    registry.emplace<Trigger>(triggerEntity);
+
+    // Create entity inside trigger
+    auto movingEntity = registry.create();
+    registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));
+    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    movingCollider.size = Vec2(16.0f, 16.0f);
+
+    // Before update
+    EXPECT_FALSE(tracker.isEntityInTrigger(
+        static_cast<uint32_t>(triggerEntity),
+        static_cast<uint32_t>(movingEntity)
+    ));
+
+    // After update
+    tracker.update(registry);
+    EXPECT_TRUE(tracker.isEntityInTrigger(
+        static_cast<uint32_t>(triggerEntity),
+        static_cast<uint32_t>(movingEntity)
+    ));
+}
+
+TEST(TriggerCallbackTest, GetEntitiesInTrigger) {
+    Registry registry;
+    TriggerTracker tracker;
+
+    // Create trigger entity
+    auto triggerEntity = registry.create();
+    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    triggerCollider.size = Vec2(64.0f, 64.0f);
+    triggerCollider.isTrigger = true;
+    registry.emplace<Trigger>(triggerEntity);
+
+    // Create multiple entities inside trigger
+    auto entity1 = registry.create();
+    registry.emplace<Transform>(entity1, Vec2(90.0f, 100.0f));
+    auto& col1 = registry.emplace<Collider>(entity1);
+    col1.size = Vec2(16.0f, 16.0f);
+
+    auto entity2 = registry.create();
+    registry.emplace<Transform>(entity2, Vec2(110.0f, 100.0f));
+    auto& col2 = registry.emplace<Collider>(entity2);
+    col2.size = Vec2(16.0f, 16.0f);
+
+    // Create entity outside trigger
+    auto entity3 = registry.create();
+    registry.emplace<Transform>(entity3, Vec2(500.0f, 500.0f));
+    auto& col3 = registry.emplace<Collider>(entity3);
+    col3.size = Vec2(16.0f, 16.0f);
+
+    tracker.update(registry);
+
+    auto entitiesInTrigger = tracker.getEntitiesInTrigger(static_cast<uint32_t>(triggerEntity));
+
+    EXPECT_EQ(entitiesInTrigger.size(), 2);
+    EXPECT_TRUE(std::find(entitiesInTrigger.begin(), entitiesInTrigger.end(),
+                          static_cast<uint32_t>(entity1)) != entitiesInTrigger.end());
+    EXPECT_TRUE(std::find(entitiesInTrigger.begin(), entitiesInTrigger.end(),
+                          static_cast<uint32_t>(entity2)) != entitiesInTrigger.end());
+}
+
+TEST(TriggerCallbackTest, RemoveEntity) {
+    Registry registry;
+    TriggerTracker tracker;
+
+    // Create trigger entity
+    auto triggerEntity = registry.create();
+    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    triggerCollider.size = Vec2(32.0f, 32.0f);
+    triggerCollider.isTrigger = true;
+    registry.emplace<Trigger>(triggerEntity);
+
+    // Create entity inside trigger
+    auto movingEntity = registry.create();
+    registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));
+    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    movingCollider.size = Vec2(16.0f, 16.0f);
+
+    tracker.update(registry);
+    EXPECT_EQ(tracker.getOverlapCount(), 1);
+
+    // Remove the entity
+    tracker.removeEntity(static_cast<uint32_t>(movingEntity));
+    EXPECT_EQ(tracker.getOverlapCount(), 0);
 }

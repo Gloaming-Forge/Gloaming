@@ -123,7 +123,12 @@ private:
             }
         }
 
-        // Check all pairs
+        // Check trigger entities against all other entities.
+        // Note: The inner loop starts at j=0 (not j=i+1) intentionally because:
+        // 1. We only process pairs where entityA is a trigger (outer loop filter)
+        // 2. Each trigger needs to detect ALL entities inside it, not just "later" ones
+        // 3. If both A and B are triggers, (A,B) and (B,A) are separate tracked pairs
+        //    since each trigger independently tracks what enters/exits it
         for (size_t i = 0; i < entities.size(); ++i) {
             auto& [entityA, transformA, colliderA, isTriggerA] = entities[i];
 

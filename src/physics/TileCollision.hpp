@@ -6,6 +6,7 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <functional>
 
 namespace gloaming {
 
@@ -61,33 +62,38 @@ public:
     /// Set tile size (pixels)
     void setTileSize(int size) { m_tileSize = size; }
 
+    /// Set a tile callback for testing (used when m_tileMap is null)
+    void setTileCallback(std::function<Tile(int, int)> callback) {
+        m_tileCallback = std::move(callback);
+    }
+
     /// Get configuration
     Config& getConfig() { return m_config; }
     const Config& getConfig() const { return m_config; }
 
     /// Check if a point is inside a solid tile
     bool isPointSolid(float worldX, float worldY) const {
-        if (!m_tileMap) return false;
+        if (!hasTileSource()) return false;
 
         int tileX, tileY;
-        m_tileMap->worldToTile(worldX, worldY, tileX, tileY);
-        return m_tileMap->isSolid(tileX, tileY);
+        worldToTileCoords(worldX, worldY, tileX, tileY);
+        return getTileAt(tileX, tileY).isSolid();
     }
 
     /// Check if an AABB overlaps any solid tiles
     bool doesAABBOverlapSolid(const AABB& aabb) const {
-        if (!m_tileMap) return false;
+        if (!hasTileSource()) return false;
 
         Vec2 min = aabb.getMin();
         Vec2 max = aabb.getMax();
 
         int minTileX, minTileY, maxTileX, maxTileY;
-        m_tileMap->worldToTile(min.x, min.y, minTileX, minTileY);
-        m_tileMap->worldToTile(max.x - 0.01f, max.y - 0.01f, maxTileX, maxTileY);
+        worldToTileCoords(min.x, min.y, minTileX, minTileY);
+        worldToTileCoords(max.x - 0.01f, max.y - 0.01f, maxTileX, maxTileY);
 
         for (int ty = minTileY; ty <= maxTileY; ++ty) {
             for (int tx = minTileX; tx <= maxTileX; ++tx) {
-                Tile tile = m_tileMap->getTile(tx, ty);
+                Tile tile = getTileAt(tx, ty);
                 if (tile.isSolid()) {
                     return true;
                 }
@@ -99,14 +105,14 @@ public:
     /// Get tiles that an AABB overlaps
     std::vector<std::pair<int, int>> getTilesInAABB(const AABB& aabb) const {
         std::vector<std::pair<int, int>> tiles;
-        if (!m_tileMap) return tiles;
+        if (!hasTileSource()) return tiles;
 
         Vec2 min = aabb.getMin();
         Vec2 max = aabb.getMax();
 
         int minTileX, minTileY, maxTileX, maxTileY;
-        m_tileMap->worldToTile(min.x, min.y, minTileX, minTileY);
-        m_tileMap->worldToTile(max.x - 0.01f, max.y - 0.01f, maxTileX, maxTileY);
+        worldToTileCoords(min.x, min.y, minTileX, minTileY);
+        worldToTileCoords(max.x - 0.01f, max.y - 0.01f, maxTileX, maxTileY);
 
         for (int ty = minTileY; ty <= maxTileY; ++ty) {
             for (int tx = minTileX; tx <= maxTileX; ++tx) {
@@ -120,7 +126,7 @@ public:
     /// Returns the collision with smallest penetration distance
     TileCollisionResult testAABBTileCollision(const AABB& aabb) const {
         TileCollisionResult result;
-        if (!m_tileMap) return result;
+        if (!hasTileSource()) return result;
 
         float smallestPenetration = std::numeric_limits<float>::max();
 
@@ -139,9 +145,9 @@ public:
     /// Test collision with a single tile
     TileCollisionResult testSingleTileCollision(const AABB& aabb, int tileX, int tileY) const {
         TileCollisionResult result;
-        if (!m_tileMap) return result;
+        if (!hasTileSource()) return result;
 
-        Tile tile = m_tileMap->getTile(tileX, tileY);
+        Tile tile = getTileAt(tileX, tileY);
         if (tile.isEmpty()) return result;
 
         result.tileX = tileX;
@@ -211,10 +217,17 @@ public:
         float slopeRatio = relativeX / static_cast<float>(m_tileSize);
         float slopeHeight;
 
+        // In Y-down coordinates:
+        // - SLOPE_LEFT: high on left (smaller Y at x=0), low on right (larger Y at x=tileSize)
+        // - SLOPE_RIGHT: low on left (larger Y at x=0), high on right (smaller Y at x=tileSize)
         if (slopeLeft) {
-            slopeHeight = tileWorldY + m_tileSize * (1.0f - slopeRatio);
-        } else {
+            // At slopeRatio=0 (left): slopeHeight = tileWorldY (top of tile)
+            // At slopeRatio=1 (right): slopeHeight = tileWorldY + tileSize (bottom of tile)
             slopeHeight = tileWorldY + m_tileSize * slopeRatio;
+        } else {
+            // At slopeRatio=0 (left): slopeHeight = tileWorldY + tileSize (bottom of tile)
+            // At slopeRatio=1 (right): slopeHeight = tileWorldY (top of tile)
+            slopeHeight = tileWorldY + m_tileSize * (1.0f - slopeRatio);
         }
 
         // Check if entity bottom is below slope surface
@@ -223,11 +236,12 @@ public:
             result.collided = true;
             result.penetration = entityBottom - slopeHeight;
 
-            // Slope normal (45 degrees)
+            // Slope normal (45 degrees) - 0.7071f is 1/sqrt(2), already normalized
+            constexpr float SQRT2_INV = 0.7071067811865476f;
             if (slopeLeft) {
-                result.normal = Vec2(0.707f, -0.707f).normalized();
+                result.normal = Vec2(SQRT2_INV, -SQRT2_INV);
             } else {
-                result.normal = Vec2(-0.707f, -0.707f).normalized();
+                result.normal = Vec2(-SQRT2_INV, -SQRT2_INV);
             }
         }
 
@@ -240,7 +254,7 @@ public:
         TileMoveResult result;
         result.newPosition = aabb.center;
 
-        if (!m_tileMap) {
+        if (!hasTileSource()) {
             result.newPosition = aabb.center + velocity;
             result.remainingVelocity = velocity;
             return result;
@@ -262,11 +276,15 @@ public:
                     result.hitHorizontal = true;
                     result.collisions.push_back(collision);
 
-                    // Move to contact point minus skin
-                    float moveX = remainingVelocity.x > 0.0f
-                        ? collision.penetration - m_config.skinWidth
-                        : -(collision.penetration - m_config.skinWidth);
-                    aabb.center.x += remainingVelocity.x - moveX;
+                    // Move to contact point with skin gap
+                    // We moved by velocity and penetrated by 'penetration', so back up by that amount plus skin
+                    if (remainingVelocity.x > 0.0f) {
+                        // Moving right: subtract penetration and skin from the movement
+                        aabb.center.x += remainingVelocity.x - collision.penetration - m_config.skinWidth;
+                    } else {
+                        // Moving left: add penetration and skin (penetration is always positive)
+                        aabb.center.x += remainingVelocity.x + collision.penetration + m_config.skinWidth;
+                    }
                     remainingVelocity.x = 0.0f;
                 } else {
                     aabb.center.x += remainingVelocity.x;
@@ -290,11 +308,14 @@ public:
                         result.onSlope = true;
                         result.onGround = true;
                     } else {
-                        // Regular tile
-                        float moveY = remainingVelocity.y > 0.0f
-                            ? collision.penetration - m_config.skinWidth
-                            : -(collision.penetration - m_config.skinWidth);
-                        aabb.center.y += remainingVelocity.y - moveY;
+                        // Regular tile - move to contact point with skin gap
+                        if (remainingVelocity.y > 0.0f) {
+                            // Moving down: subtract penetration and skin from the movement
+                            aabb.center.y += remainingVelocity.y - collision.penetration - m_config.skinWidth;
+                        } else {
+                            // Moving up: add penetration and skin (penetration is always positive)
+                            aabb.center.y += remainingVelocity.y + collision.penetration + m_config.skinWidth;
+                        }
 
                         // Check if we landed on ground (moving down and hit something below)
                         if (remainingVelocity.y > 0.0f && collision.normal.y < 0.0f) {
@@ -323,13 +344,13 @@ public:
 
     /// Check if there's ground directly below an AABB
     bool checkGroundBelow(const AABB& aabb, float distance = 2.0f) const {
-        if (!m_tileMap) return false;
+        if (!hasTileSource()) return false;
 
         Vec2 checkPoint(aabb.center.x, aabb.getMax().y + distance);
         int tileX, tileY;
-        m_tileMap->worldToTile(checkPoint.x, checkPoint.y, tileX, tileY);
+        worldToTileCoords(checkPoint.x, checkPoint.y, tileX, tileY);
 
-        Tile tile = m_tileMap->getTile(tileX, tileY);
+        Tile tile = getTileAt(tileX, tileY);
         return tile.isSolid() || (tile.flags & Tile::FLAG_PLATFORM);
     }
 
@@ -339,7 +360,7 @@ public:
         SweepResult result;
         result.time = 1.0f;
 
-        if (!m_tileMap) return result;
+        if (!hasTileSource()) return result;
         if (velocity.x == 0.0f && velocity.y == 0.0f) return result;
 
         // Calculate swept AABB bounds
@@ -347,7 +368,7 @@ public:
         auto tiles = getTilesInAABB(sweptBounds.expanded(static_cast<float>(m_tileSize)));
 
         for (const auto& [tx, ty] : tiles) {
-            Tile tile = m_tileMap->getTile(tx, ty);
+            Tile tile = getTileAt(tx, ty);
             if (!tile.isSolid()) continue;
 
             // Skip slopes for swept test (handle separately)
@@ -378,7 +399,7 @@ private:
         float closestPenetration = 0.0f;
 
         for (const auto& [tx, ty] : tiles) {
-            Tile tile = m_tileMap->getTile(tx, ty);
+            Tile tile = getTileAt(tx, ty);
             if (!tile.isSolid()) continue;
 
             // Skip platforms for horizontal collision
@@ -417,7 +438,7 @@ private:
         float closestPenetration = 0.0f;
 
         for (const auto& [tx, ty] : tiles) {
-            Tile tile = m_tileMap->getTile(tx, ty);
+            Tile tile = getTileAt(tx, ty);
             if (tile.isEmpty()) continue;
 
             bool isSolid = tile.isSolid();
@@ -473,7 +494,34 @@ private:
         return result;
     }
 
+    /// Get a tile using either TileMap or the callback
+    Tile getTileAt(int tileX, int tileY) const {
+        if (m_tileMap) {
+            return m_tileMap->getTile(tileX, tileY);
+        }
+        if (m_tileCallback) {
+            return m_tileCallback(tileX, tileY);
+        }
+        return Tile{};
+    }
+
+    /// Check if we have a tile source (map or callback)
+    bool hasTileSource() const {
+        return m_tileMap != nullptr || m_tileCallback != nullptr;
+    }
+
+    /// Convert world position to tile coordinates
+    void worldToTileCoords(float worldX, float worldY, int& tileX, int& tileY) const {
+        if (m_tileMap) {
+            m_tileMap->worldToTile(worldX, worldY, tileX, tileY);
+        } else {
+            tileX = static_cast<int>(std::floor(worldX / m_tileSize));
+            tileY = static_cast<int>(std::floor(worldY / m_tileSize));
+        }
+    }
+
     TileMap* m_tileMap = nullptr;
+    std::function<Tile(int, int)> m_tileCallback;
     int m_tileSize = 16;
     Config m_config;
 };
