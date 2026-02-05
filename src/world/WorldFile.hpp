@@ -12,11 +12,25 @@ namespace gloaming {
 /// World file format version for compatibility checking
 constexpr uint32_t WORLD_FILE_VERSION = 1;
 
-/// Magic number for world files ("GLWF" - Gloaming World File)
+/// Magic number for world files - ASCII "GLWF" (Gloaming World File)
 constexpr uint32_t WORLD_FILE_MAGIC = 0x46574C47;
 
-/// Magic number for chunk files ("GLCF" - Gloaming Chunk File)
+/// Magic number for chunk files - ASCII "GLCF" (Gloaming Chunk File)
 constexpr uint32_t CHUNK_FILE_MAGIC = 0x46434C47;
+
+/// CRC32 checksum calculation (IEEE 802.3 polynomial)
+/// Used to detect file corruption
+class CRC32 {
+public:
+    /// Calculate CRC32 for a block of data
+    static uint32_t calculate(const void* data, size_t length);
+
+    /// Calculate CRC32 for tile data in a chunk
+    static uint32_t calculateChunkChecksum(const Tile* tiles, size_t count);
+
+private:
+    static const uint32_t s_table[256];
+};
 
 /// World metadata stored in the main world file
 struct WorldMetadata {

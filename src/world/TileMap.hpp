@@ -29,14 +29,17 @@ public:
     /// @param worldPath Path to the world directory
     /// @param worldName Display name for the world
     /// @param seed World generation seed
-    bool createWorld(const std::string& worldPath, const std::string& worldName, uint64_t seed);
+    /// @return true if world was created successfully
+    [[nodiscard]] bool createWorld(const std::string& worldPath, const std::string& worldName, uint64_t seed);
 
     /// Load an existing world
     /// @param worldPath Path to the world directory
-    bool loadWorld(const std::string& worldPath);
+    /// @return true if world was loaded successfully
+    [[nodiscard]] bool loadWorld(const std::string& worldPath);
 
     /// Save the current world
-    bool saveWorld();
+    /// @return true if save was successful
+    [[nodiscard]] bool saveWorld();
 
     /// Close the current world (saves if autoSave is enabled)
     void closeWorld();

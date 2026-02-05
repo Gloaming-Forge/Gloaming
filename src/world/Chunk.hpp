@@ -59,11 +59,11 @@ struct ChunkPosition {
 /// Hash function for ChunkPosition (for std::unordered_map)
 struct ChunkPositionHash {
     std::size_t operator()(const ChunkPosition& pos) const {
-        // Combine x and y into a single hash using bit manipulation
-        // This is a simple but effective hash for 2D coordinates
+        // Use boost::hash_combine pattern for better distribution
         std::size_t h1 = std::hash<ChunkCoord>{}(pos.x);
         std::size_t h2 = std::hash<ChunkCoord>{}(pos.y);
-        return h1 ^ (h2 << 1);
+        // Golden ratio hash combine: h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2))
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
     }
 };
 

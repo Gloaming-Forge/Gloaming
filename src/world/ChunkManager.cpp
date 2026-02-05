@@ -88,7 +88,7 @@ void ChunkManager::updateAroundChunk(ChunkCoord chunkX, ChunkCoord chunkY) {
 // ============================================================================
 
 Tile ChunkManager::getTile(int worldX, int worldY) const {
-    const Chunk* chunk = getChunkAt(worldX, worldY, false);
+    const Chunk* chunk = getChunkAt(worldX, worldY);
     if (!chunk) {
         return Tile{};  // Return empty tile for unloaded chunks
     }
@@ -138,17 +138,17 @@ Chunk* ChunkManager::getChunkAt(int worldX, int worldY, bool load) {
     return getChunk(pos, load);
 }
 
-const Chunk* ChunkManager::getChunkAt(int worldX, int worldY, bool load) const {
+const Chunk* ChunkManager::getChunkAt(int worldX, int worldY) const {
     ChunkPosition pos = worldToChunkPosition(worldX, worldY);
-    return getChunk(pos, load);
+    return getChunk(pos);
 }
 
 Chunk* ChunkManager::getChunk(ChunkCoord chunkX, ChunkCoord chunkY, bool load) {
     return getChunk(ChunkPosition(chunkX, chunkY), load);
 }
 
-const Chunk* ChunkManager::getChunk(ChunkCoord chunkX, ChunkCoord chunkY, bool load) const {
-    return getChunk(ChunkPosition(chunkX, chunkY), load);
+const Chunk* ChunkManager::getChunk(ChunkCoord chunkX, ChunkCoord chunkY) const {
+    return getChunk(ChunkPosition(chunkX, chunkY));
 }
 
 Chunk* ChunkManager::getChunk(const ChunkPosition& pos, bool load) {
@@ -162,14 +162,10 @@ Chunk* ChunkManager::getChunk(const ChunkPosition& pos, bool load) {
     return nullptr;
 }
 
-const Chunk* ChunkManager::getChunk(const ChunkPosition& pos, bool load) const {
+const Chunk* ChunkManager::getChunk(const ChunkPosition& pos) const {
     auto it = m_chunks.find(pos);
     if (it != m_chunks.end()) {
         return it->second.get();
-    }
-    if (load) {
-        // const_cast is safe here as we're creating new chunk
-        return &const_cast<ChunkManager*>(this)->loadChunk(pos.x, pos.y);
     }
     return nullptr;
 }

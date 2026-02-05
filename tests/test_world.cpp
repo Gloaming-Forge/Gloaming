@@ -5,8 +5,27 @@
 #include "world/WorldFile.hpp"
 #include "world/TileMap.hpp"
 #include <filesystem>
+#include <atomic>
+
+#ifdef _WIN32
+#include <process.h>
+#define getpid _getpid
+#else
+#include <unistd.h>
+#endif
 
 using namespace gloaming;
+
+namespace {
+    // Thread-safe counter for unique test directory names
+    std::atomic<int> s_testDirCounter{0};
+
+    std::string makeUniqueTestDir(const char* prefix) {
+        return std::string(prefix) + "_" +
+               std::to_string(getpid()) + "_" +
+               std::to_string(s_testDirCounter.fetch_add(1));
+    }
+}
 
 // ============================================================================
 // Coordinate Conversion Tests
@@ -526,7 +545,7 @@ TEST(ChunkManagerTest, Statistics) {
 class WorldFileTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testDir = "test_world_" + std::to_string(std::rand());
+        testDir = makeUniqueTestDir("test_world");
         std::filesystem::remove_all(testDir);
     }
 
@@ -667,7 +686,7 @@ TEST_F(WorldFileTest, LoadNonExistent) {
 class TileMapTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testDir = "test_tilemap_" + std::to_string(std::rand());
+        testDir = makeUniqueTestDir("test_tilemap");
         std::filesystem::remove_all(testDir);
     }
 

@@ -19,6 +19,9 @@ struct ChunkManagerConfig {
 };
 
 /// Statistics about chunk manager state
+/// NOTE: This struct is not thread-safe. ChunkManager is designed for
+/// single-threaded use only. If multi-threading is added in the future,
+/// these counters should use std::atomic.
 struct ChunkManagerStats {
     size_t loadedChunks = 0;
     size_t dirtyChunks = 0;
@@ -92,15 +95,19 @@ public:
     /// @param load If true, will load/generate chunk if not present
     /// @return Pointer to chunk, or nullptr if not loaded and load=false
     Chunk* getChunkAt(int worldX, int worldY, bool load = true);
-    const Chunk* getChunkAt(int worldX, int worldY, bool load = false) const;
+    /// Get chunk at world coordinates (const version, never loads)
+    /// @return Pointer to chunk, or nullptr if not loaded
+    const Chunk* getChunkAt(int worldX, int worldY) const;
 
     /// Get chunk at chunk coordinates
     Chunk* getChunk(ChunkCoord chunkX, ChunkCoord chunkY, bool load = true);
-    const Chunk* getChunk(ChunkCoord chunkX, ChunkCoord chunkY, bool load = false) const;
+    /// Get chunk at chunk coordinates (const version, never loads)
+    const Chunk* getChunk(ChunkCoord chunkX, ChunkCoord chunkY) const;
 
     /// Get chunk by position
     Chunk* getChunk(const ChunkPosition& pos, bool load = true);
-    const Chunk* getChunk(const ChunkPosition& pos, bool load = false) const;
+    /// Get chunk by position (const version, never loads)
+    const Chunk* getChunk(const ChunkPosition& pos) const;
 
     /// Force load/generate a chunk at the given chunk coordinates
     Chunk& loadChunk(ChunkCoord chunkX, ChunkCoord chunkY);

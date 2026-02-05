@@ -96,9 +96,9 @@ void TileMap::closeWorld() {
         return;
     }
 
-    // Save if auto-save is enabled
+    // Save if auto-save is enabled (ignore result - best effort save on close)
     if (m_config.autoSave) {
-        saveWorld();
+        (void)saveWorld();
     }
 
     // Unload all chunks
