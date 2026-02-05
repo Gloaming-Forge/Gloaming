@@ -103,6 +103,26 @@ bool Engine::init(const std::string& configPath) {
 
     LOG_INFO("World system initialized");
 
+    // Initialize mod system
+    ModLoaderConfig modConfig;
+    modConfig.modsDirectory = m_config.getString("mods.directory", "mods");
+    modConfig.configFile = m_config.getString("mods.config", "config/mods.json");
+
+    if (m_modLoader.init(*this, modConfig)) {
+        int discovered = m_modLoader.discoverMods();
+        if (discovered > 0) {
+            if (m_modLoader.resolveDependencies()) {
+                int loaded = m_modLoader.loadMods();
+                m_modLoader.postInitMods();
+                LOG_INFO("Mod system: {}/{} mods loaded successfully", loaded, discovered);
+            }
+        } else {
+            LOG_INFO("No mods found in '{}'", modConfig.modsDirectory);
+        }
+    } else {
+        LOG_WARN("Mod system failed to initialize (non-fatal, continuing without mods)");
+    }
+
     m_running = true;
     LOG_INFO("Engine initialized successfully");
     return true;
@@ -185,8 +205,8 @@ void Engine::render() {
     // Run ECS render systems (dt=0 for render phase, timing not needed)
     m_systemScheduler.render(0.0f);
 
-    // Stage 1: draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 3: Chunk System", {20, 20}, 20, Color::White());
+    // Draw basic info text using renderer
+    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 5: Mod Loader", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -208,13 +228,25 @@ void Engine::render() {
         m_renderer->drawText(chunkText, {20, 110}, 16, Color(200, 200, 100, 255));
     }
 
-    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | F11: Fullscreen", {20, 140}, 16, Color::Gray());
+    // Mod info
+    char modText[128];
+    snprintf(modText, sizeof(modText), "Mods: %zu loaded | Content: %zu tiles, %zu items, %zu enemies",
+             m_modLoader.loadedCount(),
+             m_modLoader.getContentRegistry().tileCount(),
+             m_modLoader.getContentRegistry().itemCount(),
+             m_modLoader.getContentRegistry().enemyCount());
+    m_renderer->drawText(modText, {20, 140}, 16, Color(200, 150, 255, 255));
+
+    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | F11: Fullscreen", {20, 170}, 16, Color::Gray());
 
     m_renderer->endFrame();
 }
 
 void Engine::shutdown() {
     LOG_INFO("Shutting down...");
+
+    // Shutdown mods first (they may reference engine resources)
+    m_modLoader.shutdown();
 
     // Close world (auto-saves if enabled)
     if (m_tileMap.isWorldLoaded()) {

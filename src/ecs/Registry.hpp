@@ -51,11 +51,13 @@ public:
     template<typename Func>
     void destroyIf(Func&& predicate) {
         std::vector<Entity> toDestroy;
-        m_registry.each([&](Entity entity) {
+        auto& storage = m_registry.storage<entt::entity>();
+        for (auto it = storage.begin(); it != storage.end(); ++it) {
+            Entity entity = *it;
             if (predicate(entity)) {
                 toDestroy.push_back(entity);
             }
-        });
+        }
         for (Entity entity : toDestroy) {
             destroy(entity);
         }
@@ -155,7 +157,10 @@ public:
     /// Iterate over all entities
     template<typename Func>
     void eachEntity(Func&& func) {
-        m_registry.each(std::forward<Func>(func));
+        auto& storage = m_registry.storage<entt::entity>();
+        for (auto it = storage.begin(); it != storage.end(); ++it) {
+            func(*it);
+        }
     }
 
     /// Get count of entities with specific components
@@ -168,19 +173,22 @@ public:
         return n;
     }
 
-    /// Get total entity count
+    /// Get total entity count (includes destroyed but not yet recycled slots)
     size_t size() const {
-        return m_registry.storage<Entity>().size();
+        auto* storage = m_registry.storage<entt::entity>();
+        return storage ? storage->size() : 0;
     }
 
     /// Get alive entity count (not counting destroyed slots)
     size_t alive() const {
-        return m_registry.storage<Entity>().in_use();
+        auto* storage = m_registry.storage<entt::entity>();
+        return storage ? storage->free_list() : 0;
     }
 
-    /// Check if registry is empty
+    /// Check if registry is empty (no alive entities)
     bool empty() const {
-        return m_registry.storage<Entity>().in_use() == 0;
+        auto* storage = m_registry.storage<entt::entity>();
+        return !storage || storage->free_list() == 0;
     }
 
     /// Clear all entities and components

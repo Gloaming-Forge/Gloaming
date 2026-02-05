@@ -113,7 +113,7 @@ private:
             auto& transform = view.get<Transform>(entity);
             auto& collider = view.get<Collider>(entity);
             if (collider.enabled) {
-                bool hasTrigger = registry.has<Trigger>(static_cast<uint32_t>(entity));
+                bool hasTrigger = registry.has<Trigger>(entity);
                 entities.emplace_back(
                     static_cast<uint32_t>(entity),
                     &transform,
@@ -153,8 +153,9 @@ private:
     }
 
     void fireEnterCallback(Registry& registry, uint32_t triggerEntity, uint32_t otherEntity) {
-        if (registry.has<Trigger>(triggerEntity)) {
-            auto& trigger = registry.get<Trigger>(triggerEntity);
+        Entity ent = static_cast<Entity>(triggerEntity);
+        if (registry.has<Trigger>(ent)) {
+            auto& trigger = registry.get<Trigger>(ent);
             if (trigger.onEnter) {
                 trigger.onEnter(triggerEntity, otherEntity);
             }
@@ -162,8 +163,9 @@ private:
     }
 
     void fireStayCallback(Registry& registry, uint32_t triggerEntity, uint32_t otherEntity) {
-        if (registry.has<Trigger>(triggerEntity)) {
-            auto& trigger = registry.get<Trigger>(triggerEntity);
+        Entity ent = static_cast<Entity>(triggerEntity);
+        if (registry.has<Trigger>(ent)) {
+            auto& trigger = registry.get<Trigger>(ent);
             if (trigger.onStay) {
                 trigger.onStay(triggerEntity, otherEntity);
             }
@@ -171,8 +173,9 @@ private:
     }
 
     void fireExitCallback(Registry& registry, uint32_t triggerEntity, uint32_t otherEntity) {
-        if (registry.has<Trigger>(triggerEntity)) {
-            auto& trigger = registry.get<Trigger>(triggerEntity);
+        Entity ent = static_cast<Entity>(triggerEntity);
+        if (registry.has<Trigger>(ent)) {
+            auto& trigger = registry.get<Trigger>(ent);
             if (trigger.onExit) {
                 trigger.onExit(triggerEntity, otherEntity);
             }

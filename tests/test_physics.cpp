@@ -790,8 +790,8 @@ TEST(PhysicsSystemTest, ApplyImpulse) {
 
     // Create an entity with velocity
     auto entity = registry.create();
-    registry.emplace<Transform>(entity, Vec2(100.0f, 100.0f));
-    registry.emplace<Velocity>(entity);
+    registry.add<Transform>(entity, Vec2(100.0f, 100.0f));
+    registry.add<Velocity>(entity);
 
     // Test the impulse logic directly (not through PhysicsSystem::applyImpulse
     // since that requires init() to be called with a valid Engine)
@@ -810,9 +810,9 @@ TEST(PhysicsSystemTest, GravityComponent) {
     Registry registry;
 
     auto entity = registry.create();
-    registry.emplace<Transform>(entity, Vec2(100.0f, 100.0f));
-    auto& vel = registry.emplace<Velocity>(entity);
-    auto& gravity = registry.emplace<Gravity>(entity);
+    registry.add<Transform>(entity, Vec2(100.0f, 100.0f));
+    auto& vel = registry.add<Velocity>(entity);
+    auto& gravity = registry.add<Gravity>(entity);
 
     vel.linear = Vec2(0.0f, 0.0f);
     gravity.grounded = false;
@@ -878,15 +878,15 @@ TEST(TriggerCallbackTest, TriggerEnterCallback) {
 
     // Create trigger entity
     auto triggerEntity = registry.create();
-    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
-    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    registry.add<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.add<Collider>(triggerEntity);
     triggerCollider.size = Vec2(32.0f, 32.0f);
     triggerCollider.isTrigger = true;
 
     bool enterCalled = false;
     uint32_t enteredEntity = 0;
 
-    auto& trigger = registry.emplace<Trigger>(triggerEntity);
+    auto& trigger = registry.add<Trigger>(triggerEntity);
     trigger.onEnter = [&enterCalled, &enteredEntity](uint32_t triggerEnt, uint32_t otherEnt) {
         enterCalled = true;
         enteredEntity = otherEnt;
@@ -894,8 +894,8 @@ TEST(TriggerCallbackTest, TriggerEnterCallback) {
 
     // Create entity that enters trigger
     auto movingEntity = registry.create();
-    registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));  // Overlapping
-    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    registry.add<Transform>(movingEntity, Vec2(105.0f, 100.0f));  // Overlapping
+    auto& movingCollider = registry.add<Collider>(movingEntity);
     movingCollider.size = Vec2(16.0f, 16.0f);
 
     // First update - should fire onEnter
@@ -911,14 +911,14 @@ TEST(TriggerCallbackTest, TriggerStayCallback) {
 
     // Create trigger entity
     auto triggerEntity = registry.create();
-    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
-    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    registry.add<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.add<Collider>(triggerEntity);
     triggerCollider.size = Vec2(32.0f, 32.0f);
     triggerCollider.isTrigger = true;
 
     int stayCalls = 0;
 
-    auto& trigger = registry.emplace<Trigger>(triggerEntity);
+    auto& trigger = registry.add<Trigger>(triggerEntity);
     trigger.onEnter = [](uint32_t, uint32_t) {};  // Ignore enter
     trigger.onStay = [&stayCalls](uint32_t, uint32_t) {
         stayCalls++;
@@ -926,8 +926,8 @@ TEST(TriggerCallbackTest, TriggerStayCallback) {
 
     // Create entity inside trigger
     auto movingEntity = registry.create();
-    registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));
-    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    registry.add<Transform>(movingEntity, Vec2(105.0f, 100.0f));
+    auto& movingCollider = registry.add<Collider>(movingEntity);
     movingCollider.size = Vec2(16.0f, 16.0f);
 
     // First update - onEnter
@@ -949,15 +949,15 @@ TEST(TriggerCallbackTest, TriggerExitCallback) {
 
     // Create trigger entity
     auto triggerEntity = registry.create();
-    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
-    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    registry.add<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.add<Collider>(triggerEntity);
     triggerCollider.size = Vec2(32.0f, 32.0f);
     triggerCollider.isTrigger = true;
 
     bool exitCalled = false;
     uint32_t exitedEntity = 0;
 
-    auto& trigger = registry.emplace<Trigger>(triggerEntity);
+    auto& trigger = registry.add<Trigger>(triggerEntity);
     trigger.onEnter = [](uint32_t, uint32_t) {};
     trigger.onExit = [&exitCalled, &exitedEntity](uint32_t triggerEnt, uint32_t otherEnt) {
         exitCalled = true;
@@ -966,8 +966,8 @@ TEST(TriggerCallbackTest, TriggerExitCallback) {
 
     // Create entity inside trigger
     auto movingEntity = registry.create();
-    auto& movingTransform = registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));
-    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    auto& movingTransform = registry.add<Transform>(movingEntity, Vec2(105.0f, 100.0f));
+    auto& movingCollider = registry.add<Collider>(movingEntity);
     movingCollider.size = Vec2(16.0f, 16.0f);
 
     // First update - entity enters
@@ -989,16 +989,16 @@ TEST(TriggerCallbackTest, IsEntityInTrigger) {
 
     // Create trigger entity
     auto triggerEntity = registry.create();
-    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
-    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    registry.add<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.add<Collider>(triggerEntity);
     triggerCollider.size = Vec2(32.0f, 32.0f);
     triggerCollider.isTrigger = true;
-    registry.emplace<Trigger>(triggerEntity);
+    registry.add<Trigger>(triggerEntity);
 
     // Create entity inside trigger
     auto movingEntity = registry.create();
-    registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));
-    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    registry.add<Transform>(movingEntity, Vec2(105.0f, 100.0f));
+    auto& movingCollider = registry.add<Collider>(movingEntity);
     movingCollider.size = Vec2(16.0f, 16.0f);
 
     // Before update
@@ -1021,27 +1021,27 @@ TEST(TriggerCallbackTest, GetEntitiesInTrigger) {
 
     // Create trigger entity
     auto triggerEntity = registry.create();
-    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
-    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    registry.add<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.add<Collider>(triggerEntity);
     triggerCollider.size = Vec2(64.0f, 64.0f);
     triggerCollider.isTrigger = true;
-    registry.emplace<Trigger>(triggerEntity);
+    registry.add<Trigger>(triggerEntity);
 
     // Create multiple entities inside trigger
     auto entity1 = registry.create();
-    registry.emplace<Transform>(entity1, Vec2(90.0f, 100.0f));
-    auto& col1 = registry.emplace<Collider>(entity1);
+    registry.add<Transform>(entity1, Vec2(90.0f, 100.0f));
+    auto& col1 = registry.add<Collider>(entity1);
     col1.size = Vec2(16.0f, 16.0f);
 
     auto entity2 = registry.create();
-    registry.emplace<Transform>(entity2, Vec2(110.0f, 100.0f));
-    auto& col2 = registry.emplace<Collider>(entity2);
+    registry.add<Transform>(entity2, Vec2(110.0f, 100.0f));
+    auto& col2 = registry.add<Collider>(entity2);
     col2.size = Vec2(16.0f, 16.0f);
 
     // Create entity outside trigger
     auto entity3 = registry.create();
-    registry.emplace<Transform>(entity3, Vec2(500.0f, 500.0f));
-    auto& col3 = registry.emplace<Collider>(entity3);
+    registry.add<Transform>(entity3, Vec2(500.0f, 500.0f));
+    auto& col3 = registry.add<Collider>(entity3);
     col3.size = Vec2(16.0f, 16.0f);
 
     tracker.update(registry);
@@ -1061,16 +1061,16 @@ TEST(TriggerCallbackTest, RemoveEntity) {
 
     // Create trigger entity
     auto triggerEntity = registry.create();
-    registry.emplace<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
-    auto& triggerCollider = registry.emplace<Collider>(triggerEntity);
+    registry.add<Transform>(triggerEntity, Vec2(100.0f, 100.0f));
+    auto& triggerCollider = registry.add<Collider>(triggerEntity);
     triggerCollider.size = Vec2(32.0f, 32.0f);
     triggerCollider.isTrigger = true;
-    registry.emplace<Trigger>(triggerEntity);
+    registry.add<Trigger>(triggerEntity);
 
     // Create entity inside trigger
     auto movingEntity = registry.create();
-    registry.emplace<Transform>(movingEntity, Vec2(105.0f, 100.0f));
-    auto& movingCollider = registry.emplace<Collider>(movingEntity);
+    registry.add<Transform>(movingEntity, Vec2(105.0f, 100.0f));
+    auto& movingCollider = registry.add<Collider>(movingEntity);
     movingCollider.size = Vec2(16.0f, 16.0f);
 
     tracker.update(registry);

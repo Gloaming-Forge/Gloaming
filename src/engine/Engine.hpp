@@ -14,6 +14,7 @@
 #include "ecs/Systems.hpp"
 #include "ecs/EntityFactory.hpp"
 #include "world/TileMap.hpp"
+#include "mod/ModLoader.hpp"
 
 #include <string>
 #include <memory>
@@ -47,6 +48,11 @@ public:
     // World accessors
     TileMap& getTileMap() { return m_tileMap; }
 
+    // Mod system accessors
+    ModLoader& getModLoader() { return m_modLoader; }
+    ContentRegistry& getContentRegistry() { return m_modLoader.getContentRegistry(); }
+    EventBus& getEventBus() { return m_modLoader.getEventBus(); }
+
 private:
     void processInput();
     void update(double dt);
@@ -72,6 +78,9 @@ private:
 
     // World systems
     TileMap m_tileMap;
+
+    // Mod system
+    ModLoader m_modLoader;
 
     bool m_running = false;
 };

@@ -93,13 +93,13 @@ public:
 
     /// Move an entity with collision handling
     /// Returns the movement result
-    TileMoveResult moveEntity(uint32_t entity, Vec2 velocity, float dt);
+    TileMoveResult moveEntity(Entity entity, Vec2 velocity, float dt);
 
     /// Check if an entity is on the ground
-    bool isOnGround(uint32_t entity);
+    bool isOnGround(Entity entity);
 
     /// Apply an impulse to an entity
-    void applyImpulse(uint32_t entity, Vec2 impulse);
+    void applyImpulse(Entity entity, Vec2 impulse);
 
     /// Get physics statistics
     struct Stats {
@@ -119,7 +119,7 @@ private:
     void updatePositions(float dt);
 
     /// Process a single entity's physics
-    void processEntity(uint32_t entity, Transform& transform, Velocity& velocity,
+    void processEntity(Entity entity, Transform& transform, Velocity& velocity,
                        Collider* collider, Gravity* gravity, float dt);
 
     /// Handle entity-to-entity collisions
@@ -206,20 +206,20 @@ inline void PhysicsSystem::updatePositions(float dt) {
         auto& transform = view.get<Transform>(entity);
         auto& velocity = view.get<Velocity>(entity);
 
-        Collider* collider = registry.has<Collider>(static_cast<uint32_t>(entity))
-            ? &registry.get<Collider>(static_cast<uint32_t>(entity))
+        Collider* collider = registry.has<Collider>(entity)
+            ? &registry.get<Collider>(entity)
             : nullptr;
 
-        Gravity* gravity = registry.has<Gravity>(static_cast<uint32_t>(entity))
-            ? &registry.get<Gravity>(static_cast<uint32_t>(entity))
+        Gravity* gravity = registry.has<Gravity>(entity)
+            ? &registry.get<Gravity>(entity)
             : nullptr;
 
-        processEntity(static_cast<uint32_t>(entity), transform, velocity, collider, gravity, dt);
+        processEntity(entity, transform, velocity, collider, gravity, dt);
         ++m_stats.entitiesProcessed;
     }
 }
 
-inline void PhysicsSystem::processEntity(uint32_t entity, Transform& transform, Velocity& velocity,
+inline void PhysicsSystem::processEntity(Entity entity, Transform& transform, Velocity& velocity,
                                           Collider* collider, Gravity* gravity, float dt) {
     // Clamp horizontal speed
     if (std::abs(velocity.linear.x) > m_config.maxHorizontalSpeed) {
@@ -256,7 +256,7 @@ inline void PhysicsSystem::processEntity(uint32_t entity, Transform& transform, 
             velocity.linear.x = 0.0f;
 
             CollisionEvent event;
-            event.entity = entity;
+            event.entity = static_cast<uint32_t>(entity);
             event.withTile = true;
             event.normal = Vec2(frameVelocity.x > 0 ? -1.0f : 1.0f, 0.0f);
             if (!moveResult.collisions.empty()) {
@@ -271,7 +271,7 @@ inline void PhysicsSystem::processEntity(uint32_t entity, Transform& transform, 
             velocity.linear.y = 0.0f;
 
             CollisionEvent event;
-            event.entity = entity;
+            event.entity = static_cast<uint32_t>(entity);
             event.withTile = true;
             event.normal = Vec2(0.0f, frameVelocity.y > 0 ? -1.0f : 1.0f);
             if (!moveResult.collisions.empty()) {
@@ -379,24 +379,26 @@ inline void PhysicsSystem::handleEntityCollisions() {
 
         // Simple separation (push entities apart) and cancel colliding velocity
         auto& registry = getRegistry();
-        if (registry.has<Transform>(collision.entityA) && registry.has<Transform>(collision.entityB)) {
-            auto& transformA = registry.get<Transform>(collision.entityA);
-            auto& transformB = registry.get<Transform>(collision.entityB);
+        Entity entA = static_cast<Entity>(collision.entityA);
+        Entity entB = static_cast<Entity>(collision.entityB);
+        if (registry.has<Transform>(entA) && registry.has<Transform>(entB)) {
+            auto& transformA = registry.get<Transform>(entA);
+            auto& transformB = registry.get<Transform>(entB);
 
             Vec2 separation = resolvePenetration(collision, 0.5f);
             transformA.position = transformA.position + separation;
             transformB.position = transformB.position - separation;
 
             // Zero out velocity components along collision normal to prevent re-penetration
-            if (registry.has<Velocity>(collision.entityA)) {
-                auto& velA = registry.get<Velocity>(collision.entityA);
+            if (registry.has<Velocity>(entA)) {
+                auto& velA = registry.get<Velocity>(entA);
                 float dotA = Vec2::dot(velA.linear, collision.normal);
                 if (dotA < 0.0f) { // Only cancel if moving into collision
                     velA.linear = velA.linear - collision.normal * dotA;
                 }
             }
-            if (registry.has<Velocity>(collision.entityB)) {
-                auto& velB = registry.get<Velocity>(collision.entityB);
+            if (registry.has<Velocity>(entB)) {
+                auto& velB = registry.get<Velocity>(entB);
                 Vec2 normalB = collision.normal * -1.0f;
                 float dotB = Vec2::dot(velB.linear, normalB);
                 if (dotB < 0.0f) { // Only cancel if moving into collision
@@ -435,7 +437,7 @@ inline bool PhysicsSystem::hasLineOfSight(Vec2 from, Vec2 to, uint32_t ignoreEnt
     return Raycast::hasLineOfSight(from, to, m_tileMap, m_tileSize, getRegistry(), ignoreEntity);
 }
 
-inline TileMoveResult PhysicsSystem::moveEntity(uint32_t entity, Vec2 velocity, float dt) {
+inline TileMoveResult PhysicsSystem::moveEntity(Entity entity, Vec2 velocity, float dt) {
     auto& registry = getRegistry();
 
     if (!registry.has<Transform>(entity) || !registry.has<Collider>(entity)) {
@@ -462,7 +464,7 @@ inline TileMoveResult PhysicsSystem::moveEntity(uint32_t entity, Vec2 velocity, 
     return result;
 }
 
-inline bool PhysicsSystem::isOnGround(uint32_t entity) {
+inline bool PhysicsSystem::isOnGround(Entity entity) {
     auto& registry = getRegistry();
     if (registry.has<Gravity>(entity)) {
         return registry.get<Gravity>(entity).grounded;
@@ -470,7 +472,7 @@ inline bool PhysicsSystem::isOnGround(uint32_t entity) {
     return false;
 }
 
-inline void PhysicsSystem::applyImpulse(uint32_t entity, Vec2 impulse) {
+inline void PhysicsSystem::applyImpulse(Entity entity, Vec2 impulse) {
     auto& registry = getRegistry();
     if (registry.has<Velocity>(entity)) {
         auto& velocity = registry.get<Velocity>(entity);

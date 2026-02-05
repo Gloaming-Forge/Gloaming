@@ -102,6 +102,12 @@ add_library(gloaming_engine STATIC
     src/world/TileMap.cpp
     # Physics (Stage 4)
     src/physics/PhysicsSystem.cpp
+    # Mod System (Stage 5)
+    src/mod/ModManifest.cpp
+    src/mod/ContentRegistry.cpp
+    src/mod/LuaBindings.cpp
+    src/mod/ModLoader.cpp
+    src/mod/HotReload.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

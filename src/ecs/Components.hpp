@@ -12,8 +12,8 @@
 
 namespace gloaming {
 
-// Forward declarations
-class Entity;
+// Entity is defined as entt::entity (an enum) in Registry.hpp
+// No forward declaration needed here
 
 /// Transform component - position, rotation, scale in world space
 struct Transform {
