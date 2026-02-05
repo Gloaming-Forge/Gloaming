@@ -773,6 +773,15 @@ TEST(TileCollisionWithMapTest, CheckGroundBelowNotGrounded) {
 // ============================================================================
 // PhysicsSystem Integration Tests
 // ============================================================================
+// NOTE: These tests verify the physics LOGIC used by PhysicsSystem, but do not
+// call PhysicsSystem::init() or PhysicsSystem::update() directly because Engine
+// is difficult to mock (requires renderer, window, etc.). This means bugs in
+// the system's update loop wiring would not be caught here.
+//
+// For full integration testing, consider:
+// 1. Creating a minimal mock Engine for testing
+// 2. Running gameplay tests that exercise the actual system
+// 3. Manual testing in a debug build with physics visualization
 
 TEST(PhysicsSystemTest, ApplyImpulse) {
     Registry registry;
@@ -784,11 +793,8 @@ TEST(PhysicsSystemTest, ApplyImpulse) {
     registry.emplace<Transform>(entity, Vec2(100.0f, 100.0f));
     registry.emplace<Velocity>(entity);
 
-    // Mock engine for init (we need a basic setup)
-    // Since we can't easily create an Engine, we'll test the method directly
-    // by accessing the registry through a workaround
-
-    // Instead, let's test the impulse logic
+    // Test the impulse logic directly (not through PhysicsSystem::applyImpulse
+    // since that requires init() to be called with a valid Engine)
     Velocity& vel = registry.get<Velocity>(entity);
     vel.linear = Vec2(0.0f, 0.0f);
 

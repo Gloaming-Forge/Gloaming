@@ -11,9 +11,12 @@
 namespace gloaming {
 
 /// Additional tile flags for physics (extends Tile flags)
+/// Slope naming convention (Y-down coordinates, visual perspective):
+///   SLOPE_LEFT:  Surface is high on LEFT side, slopes DOWN to the right  /
+///   SLOPE_RIGHT: Surface is high on RIGHT side, slopes DOWN to the left   \
 namespace TilePhysicsFlags {
-    constexpr uint8_t SLOPE_LEFT  = 1 << 3;   // 45-degree slope, high on left
-    constexpr uint8_t SLOPE_RIGHT = 1 << 4;   // 45-degree slope, high on right
+    constexpr uint8_t SLOPE_LEFT  = 1 << 3;   // 45° slope: high left, low right (descends rightward)
+    constexpr uint8_t SLOPE_RIGHT = 1 << 4;   // 45° slope: low left, high right (descends leftward)
     constexpr uint8_t SLOPE_MASK  = SLOPE_LEFT | SLOPE_RIGHT;
 }
 
@@ -63,6 +66,9 @@ public:
     void setTileSize(int size) { m_tileSize = size; }
 
     /// Set a tile callback for testing (used when m_tileMap is null)
+    /// @note The callback is stored by value, but if it captures references/pointers
+    ///       (e.g., [this] or [&obj]), ensure the captured objects outlive this TileCollision instance.
+    ///       Typically used in tests where both the provider and TileCollision are stack-local.
     void setTileCallback(std::function<Tile(int, int)> callback) {
         m_tileCallback = std::move(callback);
     }
@@ -278,12 +284,15 @@ public:
 
                     // Move to contact point with skin gap
                     // We moved by velocity and penetrated by 'penetration', so back up by that amount plus skin
+                    // Clamp to prevent overshooting backwards (can happen if already slightly overlapping)
                     if (remainingVelocity.x > 0.0f) {
                         // Moving right: subtract penetration and skin from the movement
-                        aabb.center.x += remainingVelocity.x - collision.penetration - m_config.skinWidth;
+                        float movement = remainingVelocity.x - collision.penetration - m_config.skinWidth;
+                        aabb.center.x += std::max(0.0f, movement);  // Don't move backwards
                     } else {
                         // Moving left: add penetration and skin (penetration is always positive)
-                        aabb.center.x += remainingVelocity.x + collision.penetration + m_config.skinWidth;
+                        float movement = remainingVelocity.x + collision.penetration + m_config.skinWidth;
+                        aabb.center.x += std::min(0.0f, movement);  // Don't move backwards
                     }
                     remainingVelocity.x = 0.0f;
                 } else {
@@ -309,12 +318,15 @@ public:
                         result.onGround = true;
                     } else {
                         // Regular tile - move to contact point with skin gap
+                        // Clamp to prevent overshooting backwards (can happen if already slightly overlapping)
                         if (remainingVelocity.y > 0.0f) {
                             // Moving down: subtract penetration and skin from the movement
-                            aabb.center.y += remainingVelocity.y - collision.penetration - m_config.skinWidth;
+                            float movement = remainingVelocity.y - collision.penetration - m_config.skinWidth;
+                            aabb.center.y += std::max(0.0f, movement);  // Don't move backwards
                         } else {
                             // Moving up: add penetration and skin (penetration is always positive)
-                            aabb.center.y += remainingVelocity.y + collision.penetration + m_config.skinWidth;
+                            float movement = remainingVelocity.y + collision.penetration + m_config.skinWidth;
+                            aabb.center.y += std::min(0.0f, movement);  // Don't move backwards
                         }
 
                         // Check if we landed on ground (moving down and hit something below)
