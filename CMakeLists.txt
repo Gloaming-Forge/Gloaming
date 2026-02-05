@@ -78,12 +78,20 @@ FetchContent_MakeAvailable(sol2)
 # Engine static library
 # --------------------------------------------------------------------------
 add_library(gloaming_engine STATIC
+    # Core engine
     src/engine/Log.cpp
     src/engine/Config.cpp
     src/engine/Time.cpp
     src/engine/Window.cpp
     src/engine/Input.cpp
     src/engine/Engine.cpp
+    # Rendering (Stage 1)
+    src/rendering/Texture.cpp
+    src/rendering/Camera.cpp
+    src/rendering/SpriteBatch.cpp
+    src/rendering/TileRenderer.cpp
+    src/rendering/ParallaxBackground.cpp
+    src/rendering/RaylibRenderer.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC
