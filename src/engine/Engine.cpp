@@ -66,6 +66,12 @@ bool Engine::init(const std::string& configPath) {
 
     LOG_INFO("Rendering systems initialized");
 
+    // Initialize ECS
+    m_systemScheduler.init(m_registry, *this);
+    m_entityFactory.setTextureManager(&m_textureManager);
+
+    LOG_INFO("ECS initialized");
+
     m_running = true;
     LOG_INFO("Engine initialized successfully");
     return true;
@@ -95,11 +101,16 @@ void Engine::processInput() {
 }
 
 void Engine::update(double dt) {
+    float dtFloat = static_cast<float>(dt);
+
+    // Run ECS update systems
+    m_systemScheduler.update(dtFloat);
+
     // Update parallax background auto-scrolling
-    m_parallaxBg.update(static_cast<float>(dt));
+    m_parallaxBg.update(dtFloat);
 
     // Handle camera controls for testing (Stage 1 demo)
-    float cameraSpeed = 300.0f * static_cast<float>(dt);
+    float cameraSpeed = 300.0f * dtFloat;
     if (m_input.isKeyDown(KEY_W) || m_input.isKeyDown(KEY_UP)) {
         m_camera.move(0, -cameraSpeed);
     }
@@ -114,7 +125,7 @@ void Engine::update(double dt) {
     }
 
     // Zoom controls
-    float zoomSpeed = 1.0f * static_cast<float>(dt);
+    float zoomSpeed = 1.0f * dtFloat;
     if (m_input.isKeyDown(KEY_Q)) {
         m_camera.zoom(-zoomSpeed);
     }
@@ -129,6 +140,9 @@ void Engine::render() {
 
     // Render parallax background layers
     m_parallaxBg.render();
+
+    // Run ECS render systems (dt=0 for render phase, timing not needed)
+    m_systemScheduler.render(0.0f);
 
     // Stage 1: draw basic info text using renderer
     m_renderer->drawText("Gloaming Engine v0.1.0", {20, 20}, 20, Color::White());
@@ -151,6 +165,10 @@ void Engine::render() {
 
 void Engine::shutdown() {
     LOG_INFO("Shutting down...");
+
+    // Shutdown ECS
+    m_systemScheduler.shutdown();
+    m_registry.clear();
 
     // Unload all textures
     m_textureManager.unloadAll();
