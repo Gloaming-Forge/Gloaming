@@ -1377,6 +1377,7 @@ mods/base-game/
 - [ ] LuaJIT integration
 - [ ] Content registry (tiles, items, enemies)
 - [ ] Lua bindings for core APIs
+- [ ] Input abstraction improvement (engine-defined key/button enums instead of raw raylib ints)
 - [ ] Hot reload (debug builds)
 
 **Deliverable:** Load base-game mod, tiles defined in JSON appear
