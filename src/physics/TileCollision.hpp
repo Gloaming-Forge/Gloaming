@@ -410,10 +410,14 @@ public:
 
 private:
     /// Resolve horizontal collision
+    /// Uses swept area to detect tiles along the full movement path, preventing tunneling
     TileCollisionResult resolveHorizontalCollision(const AABB& testAABB, float velocityX) const {
         TileCollisionResult result;
 
-        auto tiles = getTilesInAABB(testAABB);
+        // Compute original position and swept area covering full movement path
+        AABB originalAABB = testAABB.translated(Vec2(-velocityX, 0.0f));
+        AABB sweptArea = AABB::merge(originalAABB, testAABB);
+        auto tiles = getTilesInAABB(sweptArea);
         float closestPenetration = 0.0f;
 
         for (const auto& [tx, ty] : tiles) {
@@ -433,14 +437,39 @@ private:
                 Vec2(m_tileSize * 0.5f, m_tileSize * 0.5f)
             );
 
-            auto collision = testAABBCollision(testAABB, tileAABB);
-            if (collision.collided && collision.penetration > closestPenetration) {
+            // Verify vertical overlap with the original AABB
+            bool verticalOverlap = originalAABB.getMin().y < tileAABB.getMax().y &&
+                                   originalAABB.getMax().y > tileAABB.getMin().y;
+            if (!verticalOverlap) continue;
+
+            float penetration = 0.0f;
+            bool hit = false;
+
+            if (velocityX > 0.0f) {
+                // Moving right: check if right edge crossed tile's left edge
+                float startRight = originalAABB.getMax().x;
+                float tileLeft = tileAABB.getMin().x;
+                if (startRight <= tileLeft + m_config.skinWidth) {
+                    penetration = testAABB.getMax().x - tileLeft;
+                    hit = penetration > 0.0f;
+                }
+            } else {
+                // Moving left: check if left edge crossed tile's right edge
+                float startLeft = originalAABB.getMin().x;
+                float tileRight = tileAABB.getMax().x;
+                if (startLeft >= tileRight - m_config.skinWidth) {
+                    penetration = tileRight - testAABB.getMin().x;
+                    hit = penetration > 0.0f;
+                }
+            }
+
+            if (hit && penetration > closestPenetration) {
                 result.collided = true;
                 result.tileX = tx;
                 result.tileY = ty;
-                result.penetration = collision.penetration;
+                result.penetration = penetration;
                 result.normal = Vec2(velocityX > 0.0f ? -1.0f : 1.0f, 0.0f);
-                closestPenetration = collision.penetration;
+                closestPenetration = penetration;
             }
         }
 
@@ -448,11 +477,15 @@ private:
     }
 
     /// Resolve vertical collision
+    /// Uses swept area to detect tiles along the full movement path, preventing tunneling
     TileCollisionResult resolveVerticalCollision(const AABB& testAABB, float velocityY,
                                                   bool checkPlatforms, bool wasOnGround) const {
         TileCollisionResult result;
 
-        auto tiles = getTilesInAABB(testAABB);
+        // Compute original position and swept area covering full movement path
+        AABB originalAABB = testAABB.translated(Vec2(0.0f, -velocityY));
+        AABB sweptArea = AABB::merge(originalAABB, testAABB);
+        auto tiles = getTilesInAABB(sweptArea);
         float closestPenetration = 0.0f;
 
         for (const auto& [tx, ty] : tiles) {
@@ -472,11 +505,18 @@ private:
 
                 // Check if entity was above platform before movement
                 float platformTop = static_cast<float>(ty * m_tileSize);
-                float entityBottom = testAABB.getMax().y - velocityY; // Previous bottom
+                float entityBottom = originalAABB.getMax().y;
 
                 // Only collide if we were above the platform
                 if (entityBottom > platformTop + m_config.skinWidth) continue;
             }
+
+            float tileWorldX = static_cast<float>(tx * m_tileSize);
+            float tileWorldY = static_cast<float>(ty * m_tileSize);
+            AABB tileAABB = AABB(
+                Vec2(tileWorldX + m_tileSize * 0.5f, tileWorldY + m_tileSize * 0.5f),
+                Vec2(m_tileSize * 0.5f, m_tileSize * 0.5f)
+            );
 
             // Handle slopes
             if (isSlope) {
@@ -490,22 +530,40 @@ private:
 
             if (!isSolid && !isPlatform) continue;
 
-            float tileWorldX = static_cast<float>(tx * m_tileSize);
-            float tileWorldY = static_cast<float>(ty * m_tileSize);
-            AABB tileAABB = AABB(
-                Vec2(tileWorldX + m_tileSize * 0.5f, tileWorldY + m_tileSize * 0.5f),
-                Vec2(m_tileSize * 0.5f, m_tileSize * 0.5f)
-            );
+            // Verify horizontal overlap with the original AABB
+            bool horizontalOverlap = originalAABB.getMin().x < tileAABB.getMax().x &&
+                                     originalAABB.getMax().x > tileAABB.getMin().x;
+            if (!horizontalOverlap) continue;
 
-            auto collision = testAABBCollision(testAABB, tileAABB);
-            if (collision.collided && collision.penetration > closestPenetration) {
+            float penetration = 0.0f;
+            bool hit = false;
+
+            if (velocityY > 0.0f) {
+                // Moving down: check if bottom edge crossed tile's top edge
+                float startBottom = originalAABB.getMax().y;
+                float tileTop = tileAABB.getMin().y;
+                if (startBottom <= tileTop + m_config.skinWidth) {
+                    penetration = testAABB.getMax().y - tileTop;
+                    hit = penetration > 0.0f;
+                }
+            } else {
+                // Moving up: check if top edge crossed tile's bottom edge
+                float startTop = originalAABB.getMin().y;
+                float tileBottom = tileAABB.getMax().y;
+                if (startTop >= tileBottom - m_config.skinWidth) {
+                    penetration = tileBottom - testAABB.getMin().y;
+                    hit = penetration > 0.0f;
+                }
+            }
+
+            if (hit && penetration > closestPenetration) {
                 result.collided = true;
                 result.tileX = tx;
                 result.tileY = ty;
-                result.penetration = collision.penetration;
+                result.penetration = penetration;
                 result.normal = Vec2(0.0f, velocityY > 0.0f ? -1.0f : 1.0f);
                 result.isPlatform = isPlatform;
-                closestPenetration = collision.penetration;
+                closestPenetration = penetration;
             }
         }
 

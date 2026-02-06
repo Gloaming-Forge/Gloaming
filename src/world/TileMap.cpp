@@ -115,13 +115,19 @@ void TileMap::update(const Camera& camera) {
     if (!m_worldLoaded) return;
 
     Vec2 pos = camera.getPosition();
-    m_chunkManager.update(pos.x, pos.y);
+    // Convert world pixel coordinates to tile coordinates for the chunk manager
+    float tileX = pos.x / m_config.tileSize;
+    float tileY = pos.y / m_config.tileSize;
+    m_chunkManager.update(tileX, tileY);
 }
 
 void TileMap::update(float worldX, float worldY) {
     if (!m_worldLoaded) return;
 
-    m_chunkManager.update(worldX, worldY);
+    // Convert world pixel coordinates to tile coordinates for the chunk manager
+    float tileX = worldX / m_config.tileSize;
+    float tileY = worldY / m_config.tileSize;
+    m_chunkManager.update(tileX, tileY);
 }
 
 // ============================================================================

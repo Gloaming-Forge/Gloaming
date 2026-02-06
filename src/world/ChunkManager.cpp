@@ -191,6 +191,7 @@ Chunk& ChunkManager::loadChunk(ChunkCoord chunkX, ChunkCoord chunkY) {
     // Store the chunk
     Chunk* chunkPtr = chunk.get();
     m_chunks[pos] = std::move(chunk);
+    m_stats.loadedChunks = m_chunks.size();
 
     // Call loaded callback
     if (m_onChunkLoaded) {
@@ -220,6 +221,7 @@ bool ChunkManager::unloadChunk(ChunkCoord chunkX, ChunkCoord chunkY, bool save) 
     }
 
     m_chunks.erase(it);
+    m_stats.loadedChunks = m_chunks.size();
     ++m_stats.chunksUnloaded;
     return true;
 }
