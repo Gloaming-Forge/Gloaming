@@ -611,7 +611,7 @@ public:
     LowPrioritySystem() : System("LowPrioritySystem", 10) {}
 
     void update(float /*dt*/) override {
-        executionOrder.push_back("low");
+        HighPrioritySystem::executionOrder.push_back("low");
     }
 
     static std::vector<std::string>& getExecutionOrder() {

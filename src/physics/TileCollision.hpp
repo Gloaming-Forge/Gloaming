@@ -13,7 +13,7 @@ namespace gloaming {
 /// Additional tile flags for physics (extends Tile flags)
 /// Slope naming convention (Y-down coordinates, visual perspective):
 ///   SLOPE_LEFT:  Surface is high on LEFT side, slopes DOWN to the right  /
-///   SLOPE_RIGHT: Surface is high on RIGHT side, slopes DOWN to the left   \
+///   SLOPE_RIGHT: Surface is high on RIGHT side, slopes DOWN to the left
 namespace TilePhysicsFlags {
     constexpr uint8_t SLOPE_LEFT  = 1 << 3;   // 45° slope: high left, low right (descends rightward)
     constexpr uint8_t SLOPE_RIGHT = 1 << 4;   // 45° slope: low left, high right (descends leftward)

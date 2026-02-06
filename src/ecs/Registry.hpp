@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ecs/Entity.hpp"
+
 #include <entt/entt.hpp>
 
 #include <vector>
@@ -8,12 +10,6 @@
 #include <unordered_map>
 
 namespace gloaming {
-
-/// Entity handle - wrapper around EnTT entity for convenience
-using Entity = entt::entity;
-
-/// Null entity constant
-constexpr Entity NullEntity = entt::null;
 
 /// Entity registry wrapper providing convenient access to EnTT functionality
 class Registry {
@@ -51,11 +47,13 @@ public:
     template<typename Func>
     void destroyIf(Func&& predicate) {
         std::vector<Entity> toDestroy;
-        m_registry.each([&](Entity entity) {
-            if (predicate(entity)) {
+        auto& storage = m_registry.storage<entt::entity>();
+        for (auto it = storage.begin(); it != storage.end(); ++it) {
+            Entity entity = *it;
+            if (m_registry.valid(entity) && predicate(entity)) {
                 toDestroy.push_back(entity);
             }
-        });
+        }
         for (Entity entity : toDestroy) {
             destroy(entity);
         }
@@ -152,10 +150,16 @@ public:
         m_registry.view<Components...>().each(std::forward<Func>(func));
     }
 
-    /// Iterate over all entities
+    /// Iterate over all alive entities
     template<typename Func>
     void eachEntity(Func&& func) {
-        m_registry.each(std::forward<Func>(func));
+        auto& storage = m_registry.storage<entt::entity>();
+        for (auto it = storage.begin(); it != storage.end(); ++it) {
+            Entity entity = *it;
+            if (m_registry.valid(entity)) {
+                func(entity);
+            }
+        }
     }
 
     /// Get count of entities with specific components
@@ -168,19 +172,24 @@ public:
         return n;
     }
 
-    /// Get total entity count
+    /// Get total entity count (includes destroyed but not yet recycled slots)
     size_t size() const {
-        return m_registry.storage<Entity>().size();
+        auto* storage = m_registry.storage<entt::entity>();
+        return storage ? storage->size() : 0;
     }
 
-    /// Get alive entity count (not counting destroyed slots)
+    /// Get alive entity count (not counting destroyed slots).
+    /// In swap_only deletion policy, free_list() returns the count of alive entities
+    /// as it marks the boundary between live and recycled slots in the packed array.
     size_t alive() const {
-        return m_registry.storage<Entity>().in_use();
+        auto* storage = m_registry.storage<entt::entity>();
+        return storage ? storage->free_list() : 0;
     }
 
-    /// Check if registry is empty
+    /// Check if registry is empty (no alive entities)
     bool empty() const {
-        return m_registry.storage<Entity>().in_use() == 0;
+        auto* storage = m_registry.storage<entt::entity>();
+        return !storage || storage->free_list() == 0;
     }
 
     /// Clear all entities and components

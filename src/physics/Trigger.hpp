@@ -16,8 +16,8 @@ class TriggerTracker {
 public:
     /// Pair of entities for tracking overlaps
     struct EntityPair {
-        uint32_t triggerEntity;
-        uint32_t otherEntity;
+        Entity triggerEntity;
+        Entity otherEntity;
 
         bool operator==(const EntityPair& other) const {
             return triggerEntity == other.triggerEntity &&
@@ -28,8 +28,8 @@ public:
     /// Hash function for EntityPair
     struct EntityPairHash {
         std::size_t operator()(const EntityPair& pair) const {
-            std::size_t h1 = std::hash<uint32_t>{}(pair.triggerEntity);
-            std::size_t h2 = std::hash<uint32_t>{}(pair.otherEntity);
+            std::size_t h1 = std::hash<uint32_t>{}(static_cast<uint32_t>(pair.triggerEntity));
+            std::size_t h2 = std::hash<uint32_t>{}(static_cast<uint32_t>(pair.otherEntity));
             return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
         }
     };
@@ -71,7 +71,7 @@ public:
     }
 
     /// Remove tracking for a specific entity (e.g., when entity is destroyed)
-    void removeEntity(uint32_t entity) {
+    void removeEntity(Entity entity) {
         std::vector<EntityPair> toRemove;
         for (const auto& pair : m_previousOverlaps) {
             if (pair.triggerEntity == entity || pair.otherEntity == entity) {
@@ -84,8 +84,8 @@ public:
     }
 
     /// Get all entities currently inside a trigger
-    std::vector<uint32_t> getEntitiesInTrigger(uint32_t triggerEntity) const {
-        std::vector<uint32_t> entities;
+    std::vector<Entity> getEntitiesInTrigger(Entity triggerEntity) const {
+        std::vector<Entity> entities;
         for (const auto& pair : m_previousOverlaps) {
             if (pair.triggerEntity == triggerEntity) {
                 entities.push_back(pair.otherEntity);
@@ -95,7 +95,7 @@ public:
     }
 
     /// Check if an entity is inside a trigger
-    bool isEntityInTrigger(uint32_t triggerEntity, uint32_t otherEntity) const {
+    bool isEntityInTrigger(Entity triggerEntity, Entity otherEntity) const {
         return m_previousOverlaps.count({triggerEntity, otherEntity}) > 0;
     }
 
@@ -108,14 +108,14 @@ private:
         auto view = registry.view<Transform, Collider>();
 
         // Gather all entities with colliders
-        std::vector<std::tuple<uint32_t, Transform*, Collider*, bool>> entities;
+        std::vector<std::tuple<Entity, Transform*, Collider*, bool>> entities;
         for (auto entity : view) {
             auto& transform = view.get<Transform>(entity);
             auto& collider = view.get<Collider>(entity);
             if (collider.enabled) {
-                bool hasTrigger = registry.has<Trigger>(static_cast<uint32_t>(entity));
+                bool hasTrigger = registry.has<Trigger>(entity);
                 entities.emplace_back(
-                    static_cast<uint32_t>(entity),
+                    entity,
                     &transform,
                     &collider,
                     hasTrigger || collider.isTrigger
@@ -152,7 +152,7 @@ private:
         }
     }
 
-    void fireEnterCallback(Registry& registry, uint32_t triggerEntity, uint32_t otherEntity) {
+    void fireEnterCallback(Registry& registry, Entity triggerEntity, Entity otherEntity) {
         if (registry.has<Trigger>(triggerEntity)) {
             auto& trigger = registry.get<Trigger>(triggerEntity);
             if (trigger.onEnter) {
@@ -161,7 +161,7 @@ private:
         }
     }
 
-    void fireStayCallback(Registry& registry, uint32_t triggerEntity, uint32_t otherEntity) {
+    void fireStayCallback(Registry& registry, Entity triggerEntity, Entity otherEntity) {
         if (registry.has<Trigger>(triggerEntity)) {
             auto& trigger = registry.get<Trigger>(triggerEntity);
             if (trigger.onStay) {
@@ -170,7 +170,7 @@ private:
         }
     }
 
-    void fireExitCallback(Registry& registry, uint32_t triggerEntity, uint32_t otherEntity) {
+    void fireExitCallback(Registry& registry, Entity triggerEntity, Entity otherEntity) {
         if (registry.has<Trigger>(triggerEntity)) {
             auto& trigger = registry.get<Trigger>(triggerEntity);
             if (trigger.onExit) {
@@ -208,7 +208,7 @@ public:
     void clear() { m_tracker.clear(); }
 
     /// Notify that an entity was destroyed
-    void onEntityDestroyed(uint32_t entity) {
+    void onEntityDestroyed(Entity entity) {
         m_tracker.removeEntity(entity);
     }
 
