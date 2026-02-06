@@ -144,11 +144,13 @@ struct Collider {
 
     /// Get the world-space bounding box given a transform
     Rect getBounds(const Transform& transform) const {
+        float scaledW = size.x * transform.scale.x;
+        float scaledH = size.y * transform.scale.y;
         return Rect(
-            transform.position.x + offset.x - size.x * 0.5f,
-            transform.position.y + offset.y - size.y * 0.5f,
-            size.x * transform.scale.x,
-            size.y * transform.scale.y
+            transform.position.x + offset.x - scaledW * 0.5f,
+            transform.position.y + offset.y - scaledH * 0.5f,
+            scaledW,
+            scaledH
         );
     }
 

@@ -1376,19 +1376,21 @@ mods/base-game/
 
 ---
 
-### Stage 5: Mod Loader (Week 14-17)
+### Stage 5: Mod Loader (Week 14-17) ✓
 **Goal:** Mods can add content
 
-- [ ] Mod discovery and manifest parsing
-- [ ] Dependency resolution and load order
-- [ ] Asset loading (textures, sounds)
-- [ ] LuaJIT integration
-- [ ] Content registry (tiles, items, enemies)
-- [ ] Lua bindings for core APIs
-- [ ] Input abstraction improvement (engine-defined key/button enums instead of raw raylib ints)
-- [ ] Hot reload (debug builds)
+- [x] Mod discovery and manifest parsing
+- [x] Dependency resolution and load order
+- [x] Asset loading (textures, sounds)
+- [x] LuaJIT integration
+- [x] Content registry (tiles, items, enemies)
+- [x] Lua bindings for core APIs
+- [x] Input abstraction improvement (engine-defined key/button enums instead of raw raylib ints)
+- [x] Hot reload (debug builds)
 
 **Deliverable:** Load base-game mod, tiles defined in JSON appear
+
+**Implemented:** `src/mod/` contains ModManifest (manifest parsing with semantic versioning, version requirements, dependency specs, validation), ModLoader (directory scanning for mod.json, topological sort with cycle detection for load order, mod state tracking, enable/disable support), ContentRegistry (tile/item/enemy/recipe definitions with JSON loading, ContentId with mod namespacing, runtime ID assignment), LuaBindings (sol2 integration with sandboxed Lua environment, API bindings for log/content/events/mods/util, per-mod environment isolation, path security validation, instruction count limiting), EventBus (priority-based event handlers, typed EventData, subscription/cancellation), HotReload (polling-based file watcher with timestamp tracking, configurable poll interval). `src/engine/Input.hpp` upgraded with engine-defined Key enum (A-Z, 0-9, F1-F12, arrows, modifiers, special keys) and MouseButton enum replacing raw Raylib ints. 1514 lines of unit tests covering version parsing, manifest validation, content registry, and Lua sandbox.
 
 ---
 
@@ -1810,6 +1812,6 @@ Suggestions for early community mods (or official expansions):
 
 ---
 
-*Document Version: 0.3 (Complete Mod Ecosystem)*  
-*Last Updated: February 2025*  
-*Status: Draft — Awaiting Review*
+*Document Version: 0.4 (Stages 0-5 Complete)*
+*Last Updated: February 2026*
+*Status: Draft — Stage 5 verified complete, Stage 6 next*
