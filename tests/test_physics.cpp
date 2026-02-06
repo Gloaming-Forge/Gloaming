@@ -414,9 +414,9 @@ TEST(RaycastTest, RayDirectionNormalized) {
 // ============================================================================
 
 TEST(TriggerTest, TriggerTrackerEntityPairHash) {
-    TriggerTracker::EntityPair pair1{1, 2};
-    TriggerTracker::EntityPair pair2{1, 2};
-    TriggerTracker::EntityPair pair3{2, 1};
+    TriggerTracker::EntityPair pair1{static_cast<Entity>(1), static_cast<Entity>(2)};
+    TriggerTracker::EntityPair pair2{static_cast<Entity>(1), static_cast<Entity>(2)};
+    TriggerTracker::EntityPair pair3{static_cast<Entity>(2), static_cast<Entity>(1)};
 
     TriggerTracker::EntityPairHash hasher;
 
@@ -884,10 +884,10 @@ TEST(TriggerCallbackTest, TriggerEnterCallback) {
     triggerCollider.isTrigger = true;
 
     bool enterCalled = false;
-    uint32_t enteredEntity = 0;
+    Entity enteredEntity = NullEntity;
 
     auto& trigger = registry.add<Trigger>(triggerEntity);
-    trigger.onEnter = [&enterCalled, &enteredEntity](uint32_t triggerEnt, uint32_t otherEnt) {
+    trigger.onEnter = [&enterCalled, &enteredEntity](Entity triggerEnt, Entity otherEnt) {
         enterCalled = true;
         enteredEntity = otherEnt;
     };
@@ -902,7 +902,7 @@ TEST(TriggerCallbackTest, TriggerEnterCallback) {
     tracker.update(registry);
 
     EXPECT_TRUE(enterCalled);
-    EXPECT_EQ(enteredEntity, static_cast<uint32_t>(movingEntity));
+    EXPECT_EQ(enteredEntity, movingEntity);
 }
 
 TEST(TriggerCallbackTest, TriggerStayCallback) {
@@ -919,8 +919,8 @@ TEST(TriggerCallbackTest, TriggerStayCallback) {
     int stayCalls = 0;
 
     auto& trigger = registry.add<Trigger>(triggerEntity);
-    trigger.onEnter = [](uint32_t, uint32_t) {};  // Ignore enter
-    trigger.onStay = [&stayCalls](uint32_t, uint32_t) {
+    trigger.onEnter = [](Entity, Entity) {};  // Ignore enter
+    trigger.onStay = [&stayCalls](Entity, Entity) {
         stayCalls++;
     };
 
@@ -955,11 +955,11 @@ TEST(TriggerCallbackTest, TriggerExitCallback) {
     triggerCollider.isTrigger = true;
 
     bool exitCalled = false;
-    uint32_t exitedEntity = 0;
+    Entity exitedEntity = NullEntity;
 
     auto& trigger = registry.add<Trigger>(triggerEntity);
-    trigger.onEnter = [](uint32_t, uint32_t) {};
-    trigger.onExit = [&exitCalled, &exitedEntity](uint32_t triggerEnt, uint32_t otherEnt) {
+    trigger.onEnter = [](Entity, Entity) {};
+    trigger.onExit = [&exitCalled, &exitedEntity](Entity triggerEnt, Entity otherEnt) {
         exitCalled = true;
         exitedEntity = otherEnt;
     };
@@ -980,7 +980,7 @@ TEST(TriggerCallbackTest, TriggerExitCallback) {
     // Second update - entity exits
     tracker.update(registry);
     EXPECT_TRUE(exitCalled);
-    EXPECT_EQ(exitedEntity, static_cast<uint32_t>(movingEntity));
+    EXPECT_EQ(exitedEntity, movingEntity);
 }
 
 TEST(TriggerCallbackTest, IsEntityInTrigger) {
@@ -1002,17 +1002,11 @@ TEST(TriggerCallbackTest, IsEntityInTrigger) {
     movingCollider.size = Vec2(16.0f, 16.0f);
 
     // Before update
-    EXPECT_FALSE(tracker.isEntityInTrigger(
-        static_cast<uint32_t>(triggerEntity),
-        static_cast<uint32_t>(movingEntity)
-    ));
+    EXPECT_FALSE(tracker.isEntityInTrigger(triggerEntity, movingEntity));
 
     // After update
     tracker.update(registry);
-    EXPECT_TRUE(tracker.isEntityInTrigger(
-        static_cast<uint32_t>(triggerEntity),
-        static_cast<uint32_t>(movingEntity)
-    ));
+    EXPECT_TRUE(tracker.isEntityInTrigger(triggerEntity, movingEntity));
 }
 
 TEST(TriggerCallbackTest, GetEntitiesInTrigger) {
@@ -1046,13 +1040,13 @@ TEST(TriggerCallbackTest, GetEntitiesInTrigger) {
 
     tracker.update(registry);
 
-    auto entitiesInTrigger = tracker.getEntitiesInTrigger(static_cast<uint32_t>(triggerEntity));
+    auto entitiesInTrigger = tracker.getEntitiesInTrigger(triggerEntity);
 
     EXPECT_EQ(entitiesInTrigger.size(), 2);
     EXPECT_TRUE(std::find(entitiesInTrigger.begin(), entitiesInTrigger.end(),
-                          static_cast<uint32_t>(entity1)) != entitiesInTrigger.end());
+                          entity1) != entitiesInTrigger.end());
     EXPECT_TRUE(std::find(entitiesInTrigger.begin(), entitiesInTrigger.end(),
-                          static_cast<uint32_t>(entity2)) != entitiesInTrigger.end());
+                          entity2) != entitiesInTrigger.end());
 }
 
 TEST(TriggerCallbackTest, RemoveEntity) {
@@ -1077,6 +1071,6 @@ TEST(TriggerCallbackTest, RemoveEntity) {
     EXPECT_EQ(tracker.getOverlapCount(), 1);
 
     // Remove the entity
-    tracker.removeEntity(static_cast<uint32_t>(movingEntity));
+    tracker.removeEntity(movingEntity);
     EXPECT_EQ(tracker.getOverlapCount(), 0);
 }

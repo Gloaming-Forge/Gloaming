@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ecs/Entity.hpp"
 #include "rendering/IRenderer.hpp"
 #include "rendering/Texture.hpp"
 
@@ -260,7 +261,7 @@ struct ParticleEmitter {
 };
 
 /// Trigger callback type
-using TriggerCallback = std::function<void(uint32_t thisEntity, uint32_t otherEntity)>;
+using TriggerCallback = std::function<void(Entity thisEntity, Entity otherEntity)>;
 
 /// Trigger component - calls callbacks when entities enter/exit
 struct Trigger {

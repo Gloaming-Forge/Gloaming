@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ecs/Entity.hpp"
+
 #include <entt/entt.hpp>
 
 #include <vector>
@@ -8,12 +10,6 @@
 #include <unordered_map>
 
 namespace gloaming {
-
-/// Entity handle - wrapper around EnTT entity for convenience
-using Entity = entt::entity;
-
-/// Null entity constant
-constexpr Entity NullEntity = entt::null;
 
 /// Entity registry wrapper providing convenient access to EnTT functionality
 class Registry {
@@ -182,29 +178,18 @@ public:
         return storage ? storage->size() : 0;
     }
 
-    /// Get alive entity count (not counting destroyed slots)
+    /// Get alive entity count (not counting destroyed slots).
+    /// In swap_only deletion policy, free_list() returns the count of alive entities
+    /// as it marks the boundary between live and recycled slots in the packed array.
     size_t alive() const {
         auto* storage = m_registry.storage<entt::entity>();
-        if (!storage) return 0;
-        size_t count = 0;
-        for (auto it = storage->begin(); it != storage->end(); ++it) {
-            if (m_registry.valid(*it)) {
-                ++count;
-            }
-        }
-        return count;
+        return storage ? storage->free_list() : 0;
     }
 
     /// Check if registry is empty (no alive entities)
     bool empty() const {
         auto* storage = m_registry.storage<entt::entity>();
-        if (!storage) return true;
-        for (auto it = storage->begin(); it != storage->end(); ++it) {
-            if (m_registry.valid(*it)) {
-                return false;
-            }
-        }
-        return true;
+        return !storage || storage->free_list() == 0;
     }
 
     /// Clear all entities and components

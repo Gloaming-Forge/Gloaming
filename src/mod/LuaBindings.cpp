@@ -7,14 +7,30 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <filesystem>
 
 namespace gloaming {
 
-/// Validate that a relative path doesn't escape via traversal
-static bool isPathSafe(const std::string& path) {
-    if (path.find("..") != std::string::npos) return false;
-    if (!path.empty() && (path[0] == '/' || path[0] == '\\')) return false;
-    return true;
+namespace fs = std::filesystem;
+
+/// Validate that a relative path doesn't escape the base directory.
+/// Uses canonical path resolution when possible to handle symlinks.
+static bool isPathSafe(const std::string& baseDir, const std::string& relPath) {
+    // Quick reject: absolute paths and obvious traversal
+    if (relPath.empty()) return false;
+    if (relPath[0] == '/' || relPath[0] == '\\') return false;
+    if (relPath.find("..") != std::string::npos) return false;
+
+    // Canonical path check: verify resolved path stays within base dir
+    try {
+        auto resolvedBase = fs::weakly_canonical(baseDir);
+        auto resolvedFull = fs::weakly_canonical(baseDir + "/" + relPath);
+        auto rel = fs::relative(resolvedFull, resolvedBase);
+        auto relStr = rel.string();
+        return !relStr.empty() && !relStr.starts_with("..");
+    } catch (const fs::filesystem_error&) {
+        return false;
+    }
 }
 
 bool LuaBindings::init(Engine& engine, ContentRegistry& registry, EventBus& eventBus) {
@@ -115,7 +131,7 @@ void LuaBindings::bindContentAPI() {
         sol::environment& env = te;
         std::string modId = env["_MOD_ID"].get_or<std::string>("");
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
-        if (!isPathSafe(path)) {
+        if (!isPathSafe(modDir, path)) {
             MOD_LOG_ERROR("content.loadTiles: path traversal rejected '{}'", path);
             return false;
         }
@@ -141,7 +157,7 @@ void LuaBindings::bindContentAPI() {
         sol::environment& env = te;
         std::string modId = env["_MOD_ID"].get_or<std::string>("");
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
-        if (!isPathSafe(path)) {
+        if (!isPathSafe(modDir, path)) {
             MOD_LOG_ERROR("content.loadItems: path traversal rejected '{}'", path);
             return false;
         }
@@ -167,7 +183,7 @@ void LuaBindings::bindContentAPI() {
         sol::environment& env = te;
         std::string modId = env["_MOD_ID"].get_or<std::string>("");
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
-        if (!isPathSafe(path)) {
+        if (!isPathSafe(modDir, path)) {
             MOD_LOG_ERROR("content.loadEnemies: path traversal rejected '{}'", path);
             return false;
         }
@@ -193,7 +209,7 @@ void LuaBindings::bindContentAPI() {
         sol::environment& env = te;
         std::string modId = env["_MOD_ID"].get_or<std::string>("");
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
-        if (!isPathSafe(path)) {
+        if (!isPathSafe(modDir, path)) {
             MOD_LOG_ERROR("content.loadRecipes: path traversal rejected '{}'", path);
             return false;
         }
@@ -302,8 +318,9 @@ void LuaBindings::bindEventsAPI() {
 void LuaBindings::bindModsAPI() {
     auto mods = m_lua.create_named_table("mods");
 
-    // mods.isLoaded(modId) — will be populated by ModLoader during loading
-    // For now, provide a stub that returns false
+    // mods.isLoaded(modId) — stub returning false until ModLoader replaces it
+    // after all mods finish loading (via updateModsAPI). During init(), this will
+    // always return false; use postInit() for cross-mod availability checks.
     mods["isLoaded"] = [](const std::string&) -> bool {
         return false;
     };
@@ -423,7 +440,7 @@ sol::environment LuaBindings::createModEnvironment(const std::string& modId) {
         for (char& c : relPath) {
             if (c == '.') c = '/';
         }
-        if (!isPathSafe(relPath)) {
+        if (!isPathSafe(modDir, relPath)) {
             MOD_LOG_ERROR("[{}] require '{}': path traversal rejected", modId, moduleName);
             return sol::nil;
         }
