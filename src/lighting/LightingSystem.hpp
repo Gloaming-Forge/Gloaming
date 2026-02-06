@@ -65,6 +65,12 @@ public:
     void setConfig(const LightingSystemConfig& config);
     const LightingSystemConfig& getConfig() const { return m_config; }
 
+    /// Enable or disable the lighting system
+    void setLightingEnabled(bool enabled) {
+        m_config.enabled = enabled;
+        setEnabled(enabled);
+    }
+
     /// Force a full light recalculation next frame
     void markDirty() { m_needsRecalc = true; }
 

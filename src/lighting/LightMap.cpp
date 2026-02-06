@@ -133,92 +133,77 @@ void LightMap::propagateSkylight(int minWorldX, int maxWorldX,
                                   const TileLight& skyColor) {
     if (!m_config.enableSkylight) return;
 
-    // For each column, find the surface and let light penetrate downward
-    for (int x = minWorldX; x < maxWorldX; ++x) {
-        int surfaceY = getSurfaceY(x);
+    // Determine loaded Y range for above-surface fill
+    int worldMinY = 0, worldMaxY = 0;
+    {
+        int rx1, rx2, ry1, ry2;
+        getWorldRange(rx1, rx2, ry1, ry2);
+        worldMinY = ry1;
+        worldMaxY = ry2;
+    }
+
+    // For each column, find the surface and let light penetrate downward.
+    // Uses direct setLight/getLight (O(1) per tile) instead of iterating all chunks.
+    for (int col = minWorldX; col < maxWorldX; ++col) {
+        int surfaceY = getSurfaceY(col);
 
         // Set all tiles above the surface to full sky light
-        // We need to find the minimum and maximum Y in our loaded chunks for this column
-        for (auto& [cpos, cdata] : m_chunks) {
-            if (x < chunkToWorldCoord(cpos.x) || x >= chunkToWorldCoord(cpos.x) + CHUNK_SIZE)
-                continue;
-
-            int lx = worldToLocalCoord(x);
-            int chunkWorldMinY = chunkToWorldCoord(cpos.y);
-
-            for (int ly = 0; ly < CHUNK_SIZE; ++ly) {
-                int wy = chunkWorldMinY + ly;
-                if (wy < surfaceY) {
-                    // Above surface: full skylight
-                    TileLight current = cdata.getLight(lx, ly);
-                    cdata.setLight(lx, ly, TileLight::max(current, skyColor));
-                }
-            }
+        for (int wy = worldMinY; wy < surfaceY && wy < worldMaxY; ++wy) {
+            TileLight current = getLight(col, wy);
+            setLight(col, wy, TileLight::max(current, skyColor));
         }
 
         // Propagate skylight downward from surface, dimming through solid tiles
         TileLight currentLight = skyColor;
-        // Start from surface and go down
         int maxDepth = surfaceY + m_config.maxLightRadius * 2;
-        for (int y = surfaceY; y < maxDepth; ++y) {
-            ChunkPosition cpos(worldToChunkCoord(x), worldToChunkCoord(y));
+        for (int wy = surfaceY; wy < maxDepth; ++wy) {
+            ChunkPosition cpos(worldToChunkCoord(col), worldToChunkCoord(wy));
             auto it = m_chunks.find(cpos);
             if (it == m_chunks.end()) continue;
 
-            int lx = worldToLocalCoord(x);
-            int ly = worldToLocalCoord(y);
+            int lx = worldToLocalCoord(col);
+            int ly = worldToLocalCoord(wy);
 
-            // Apply skylight at this position
             TileLight existing = it->second.getLight(lx, ly);
             it->second.setLight(lx, ly, TileLight::max(existing, currentLight));
 
-            // Attenuate through solid tiles
-            if (isSolid(x, y)) {
-                int newR = std::max(0, static_cast<int>(currentLight.r) - m_config.skylightFalloff * 2);
-                int newG = std::max(0, static_cast<int>(currentLight.g) - m_config.skylightFalloff * 2);
-                int newB = std::max(0, static_cast<int>(currentLight.b) - m_config.skylightFalloff * 2);
-                currentLight = TileLight(static_cast<uint8_t>(newR),
-                                         static_cast<uint8_t>(newG),
-                                         static_cast<uint8_t>(newB));
-            } else {
-                int newR = std::max(0, static_cast<int>(currentLight.r) - m_config.skylightFalloff);
-                int newG = std::max(0, static_cast<int>(currentLight.g) - m_config.skylightFalloff);
-                int newB = std::max(0, static_cast<int>(currentLight.b) - m_config.skylightFalloff);
-                currentLight = TileLight(static_cast<uint8_t>(newR),
-                                         static_cast<uint8_t>(newG),
-                                         static_cast<uint8_t>(newB));
-            }
+            int falloff = isSolid(col, wy)
+                ? m_config.skylightFalloff * 2
+                : m_config.skylightFalloff;
+            int newR = std::max(0, static_cast<int>(currentLight.r) - falloff);
+            int newG = std::max(0, static_cast<int>(currentLight.g) - falloff);
+            int newB = std::max(0, static_cast<int>(currentLight.b) - falloff);
+            currentLight = TileLight(static_cast<uint8_t>(newR),
+                                     static_cast<uint8_t>(newG),
+                                     static_cast<uint8_t>(newB));
 
             if (currentLight.isDark()) break;
         }
     }
 
-    // Now propagate the skylight sideways into caves using BFS from all lit tiles
-    // near the surface. Collect boundary tiles (lit tiles adjacent to darker tiles).
+    // Propagate skylight sideways into caves using BFS from boundary tiles
+    // (lit tiles near the surface that are adjacent to darker tiles).
     std::vector<TileLightSource> boundarySources;
-    for (int x = minWorldX; x < maxWorldX; ++x) {
-        int surfaceY = getSurfaceY(x);
-        // Check a range around surface for potential cave entries
-        for (int y = surfaceY - 1; y < surfaceY + m_config.maxLightRadius; ++y) {
-            TileLight light = getLight(x, y);
+    static constexpr int bdx[] = {-1, 1, 0, 0};
+    static constexpr int bdy[] = {0, 0, -1, 1};
+    for (int col = minWorldX; col < maxWorldX; ++col) {
+        int surfaceY = getSurfaceY(col);
+        for (int wy = surfaceY - 1; wy < surfaceY + m_config.maxLightRadius; ++wy) {
+            TileLight light = getLight(col, wy);
             if (light.isDark()) continue;
 
-            // Check if any neighbor is darker — this is a propagation boundary
-            static constexpr int dx[] = {-1, 1, 0, 0};
-            static constexpr int dy[] = {0, 0, -1, 1};
             for (int d = 0; d < 4; ++d) {
-                TileLight neighborLight = getLight(x + dx[d], y + dy[d]);
+                TileLight neighborLight = getLight(col + bdx[d], wy + bdy[d]);
                 if (light.r > neighborLight.r + m_config.lightFalloff ||
                     light.g > neighborLight.g + m_config.lightFalloff ||
                     light.b > neighborLight.b + m_config.lightFalloff) {
-                    boundarySources.emplace_back(x, y, light);
+                    boundarySources.emplace_back(col, wy, light);
                     break;
                 }
             }
         }
     }
 
-    // Propagate from boundary sources
     for (const auto& src : boundarySources) {
         propagateLight(src, isSolid);
     }

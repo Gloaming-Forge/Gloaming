@@ -139,9 +139,9 @@ private:
     static TileLight lerpColor(const TileLight& a, const TileLight& b, float t) {
         t = std::max(0.0f, std::min(1.0f, t));
         return TileLight(
-            static_cast<uint8_t>(a.r + (b.r - a.r) * t),
-            static_cast<uint8_t>(a.g + (b.g - a.g) * t),
-            static_cast<uint8_t>(a.b + (b.b - a.b) * t)
+            static_cast<uint8_t>(static_cast<float>(a.r) + (static_cast<float>(b.r) - static_cast<float>(a.r)) * t),
+            static_cast<uint8_t>(static_cast<float>(a.g) + (static_cast<float>(b.g) - static_cast<float>(a.g)) * t),
+            static_cast<uint8_t>(static_cast<float>(a.b) + (static_cast<float>(b.b) - static_cast<float>(a.b)) * t)
         );
     }
 

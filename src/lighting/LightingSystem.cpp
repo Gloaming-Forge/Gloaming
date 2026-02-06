@@ -3,6 +3,7 @@
 #include "engine/Log.hpp"
 
 #include <chrono>
+#include <unordered_set>
 
 namespace gloaming {
 
@@ -49,6 +50,13 @@ void LightingSystem::syncChunksWithWorld() {
     auto& chunkMgr = m_tileMap->getChunkManager();
     auto loadedChunks = chunkMgr.getLoadedChunks();
 
+    // Build set of world-loaded chunk positions
+    std::unordered_set<ChunkPosition, ChunkPositionHash> loadedSet;
+    loadedSet.reserve(loadedChunks.size());
+    for (const Chunk* chunk : loadedChunks) {
+        loadedSet.insert(chunk->getPosition());
+    }
+
     // Add light data for newly loaded chunks
     for (const Chunk* chunk : loadedChunks) {
         ChunkPosition pos = chunk->getPosition();
@@ -58,25 +66,11 @@ void LightingSystem::syncChunksWithWorld() {
         }
     }
 
-    // Remove light data for unloaded chunks
-    // Build set of loaded positions
-    std::unordered_map<ChunkPosition, bool, ChunkPositionHash> loadedSet;
-    for (const Chunk* chunk : loadedChunks) {
-        loadedSet[chunk->getPosition()] = true;
-    }
-
-    // Find and remove chunks that are no longer loaded
+    // Remove light data for unloaded chunks by iterating light map keys directly
     std::vector<ChunkPosition> toRemove;
-    int minX, maxX, minY, maxY;
-    m_lightMap.getWorldRange(minX, maxX, minY, maxY);
-
-    // Iterate through light map chunks and check
-    for (ChunkCoord cy = worldToChunkCoord(minY); cy <= worldToChunkCoord(maxY - 1); ++cy) {
-        for (ChunkCoord cx = worldToChunkCoord(minX); cx <= worldToChunkCoord(maxX - 1); ++cx) {
-            ChunkPosition pos(cx, cy);
-            if (m_lightMap.hasChunk(pos) && loadedSet.find(pos) == loadedSet.end()) {
-                toRemove.push_back(pos);
-            }
+    for (const ChunkPosition& pos : m_lightMap.getChunkPositions()) {
+        if (loadedSet.find(pos) == loadedSet.end()) {
+            toRemove.push_back(pos);
         }
     }
 
@@ -108,30 +102,10 @@ void LightingSystem::collectLightSources() {
             uint8_t g = static_cast<uint8_t>(light.color.g * intensity);
             uint8_t b = static_cast<uint8_t>(light.color.b * intensity);
 
-            // Radius determines max light level at source
             TileLight tileColor(r, g, b);
             m_lightSources.emplace_back(tileX, tileY, tileColor);
         }
     );
-
-    // Collect tile-based light sources (e.g., torches, glowing ores)
-    // Iterate visible area tiles looking for light-emitting tiles
-    if (m_camera) {
-        int visMinX, visMaxX, visMinY, visMaxY;
-        m_tileMap->getVisibleTileRange(*m_camera, visMinX, visMaxX, visMinY, visMaxY);
-
-        // Add padding for light propagation beyond visible area
-        int pad = m_config.lightMap.maxLightRadius;
-        visMinX -= pad;
-        visMaxX += pad;
-        visMinY -= pad;
-        visMaxY += pad;
-
-        // For now, tile light emissions are handled via the content registry.
-        // When tiles with light_emission are placed, they should be registered as sources.
-        // This will be done through the mod system's tile definitions.
-        // Placeholder: the light source list from entities is the primary mechanism.
-    }
 
     m_stats.pointLightCount = m_lightSources.size();
 }
@@ -203,10 +177,13 @@ void LightingSystem::renderFlatTile(IRenderer* renderer, const Camera& camera,
     // If fully lit, no overlay needed
     if (light.r >= 255 && light.g >= 255 && light.b >= 255) return;
 
-    // Calculate darkness: we draw a dark overlay where there is no light.
-    // The overlay alpha = 255 - brightness
-    uint8_t darkness = static_cast<uint8_t>(255 - light.maxChannel());
-    if (darkness == 0) return;
+    // Per-channel darkness for colored light support
+    uint8_t overlayR = static_cast<uint8_t>(255 - light.r);
+    uint8_t overlayG = static_cast<uint8_t>(255 - light.g);
+    uint8_t overlayB = static_cast<uint8_t>(255 - light.b);
+
+    uint8_t maxDarkness = std::max({overlayR, overlayG, overlayB});
+    if (maxDarkness == 0) return;
 
     // World position of the tile
     float worldX = static_cast<float>(tileX * tileSize);
@@ -217,29 +194,12 @@ void LightingSystem::renderFlatTile(IRenderer* renderer, const Camera& camera,
     float zoom = camera.getZoom();
     float screenSize = tileSize * zoom;
 
-    // Draw a semi-transparent black overlay to darken unlit areas
-    // For colored light: tint the darkness appropriately
-    // If light has color, reduce the overlay in that color channel
-    uint8_t overlayR = static_cast<uint8_t>(255 - light.r);
-    uint8_t overlayG = static_cast<uint8_t>(255 - light.g);
-    uint8_t overlayB = static_cast<uint8_t>(255 - light.b);
-
-    // Use the maximum darkness value as alpha for the darkest overlay
-    // and blend colors to simulate colored light
-    Color overlayColor(0, 0, 0, darkness);
-
-    // For truly colored lighting: we overlay the inverse of the light color
-    // This makes unlit areas black and lit areas show the light's tint
-    if (light.r != light.g || light.g != light.b) {
-        // Colored light: overlay each channel's inverse
-        overlayColor = Color(0, 0, 0, static_cast<uint8_t>(
-            std::max({overlayR, overlayG, overlayB})
-        ));
-    }
-
+    // Draw semi-transparent dark overlay. Use per-channel inverse for tint:
+    // a fully red-lit tile gets overlayR=0 (no red darkening) but overlayG/B=255.
+    // Since we can only draw one rect, we use the max darkness as alpha on black.
     renderer->drawRectangle(
         Rect(screenPos.x, screenPos.y, screenSize, screenSize),
-        overlayColor
+        Color(0, 0, 0, maxDarkness)
     );
 }
 
@@ -270,38 +230,34 @@ void LightingSystem::renderSmoothTile(IRenderer* renderer, const Camera& camera,
     float zoom = camera.getZoom();
     float screenSize = tileSize * zoom;
 
-    // For smooth lighting, we subdivide each tile into 4 quadrants,
+    // Subdivide each tile into 4 quadrants,
     // each using the interpolated corner value closest to it.
     float halfSize = screenSize * 0.5f;
 
-    auto drawQuad = [&](float sx, float sy, const TileLight& light) {
-        uint8_t d = static_cast<uint8_t>(255 - std::max({light.r, light.g, light.b}));
+    auto drawQuad = [&](float sx, float sy, const TileLight& quadLight) {
+        uint8_t d = static_cast<uint8_t>(255 - std::max({quadLight.r, quadLight.g, quadLight.b}));
         if (d == 0) return;
         renderer->drawRectangle(Rect(sx, sy, halfSize, halfSize), Color(0, 0, 0, d));
     };
 
-    // Top-left quadrant: average of topLeft and center
     TileLight tlQuad(
         static_cast<uint8_t>((topLeft.r + avgR) / 2),
         static_cast<uint8_t>((topLeft.g + avgG) / 2),
         static_cast<uint8_t>((topLeft.b + avgB) / 2)
     );
 
-    // Top-right quadrant
     TileLight trQuad(
         static_cast<uint8_t>((topRight.r + avgR) / 2),
         static_cast<uint8_t>((topRight.g + avgG) / 2),
         static_cast<uint8_t>((topRight.b + avgB) / 2)
     );
 
-    // Bottom-left quadrant
     TileLight blQuad(
         static_cast<uint8_t>((bottomLeft.r + avgR) / 2),
         static_cast<uint8_t>((bottomLeft.g + avgG) / 2),
         static_cast<uint8_t>((bottomLeft.b + avgB) / 2)
     );
 
-    // Bottom-right quadrant
     TileLight brQuad(
         static_cast<uint8_t>((bottomRight.r + avgR) / 2),
         static_cast<uint8_t>((bottomRight.g + avgG) / 2),

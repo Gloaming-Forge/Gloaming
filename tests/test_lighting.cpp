@@ -617,6 +617,37 @@ TEST(DayNightTest, SkyColorTransitions) {
     EXPECT_LT(dawnSky.r, cfg.dayColor.r);
 }
 
+TEST(DayNightTest, SkyColorDecreasingChannels) {
+    // Regression test: lerpColor must handle b.channel < a.channel correctly.
+    // The dusk→night transition has dayColor(255,255,240) → duskColor(180,120,80)
+    // which means channels decrease. Previously unsigned subtraction would overflow.
+    DayNightConfig cfg;
+    cfg.dayDurationSeconds = 100.0f;
+    cfg.duskStart = 0.7f;
+    cfg.nightStart = 0.8f;
+    cfg.dayColor = TileLight(255, 255, 240);
+    cfg.duskColor = TileLight(180, 120, 80);
+    cfg.nightColor = TileLight(20, 20, 50);
+    DayNightCycle cycle(cfg);
+
+    // Early dusk: day→dusk, channels should decrease smoothly
+    cycle.setNormalizedTime(0.725f);
+    TileLight earlyDusk = cycle.getSkyColor();
+    // Values should be between day and dusk colors, not wrapped around
+    EXPECT_LE(earlyDusk.r, cfg.dayColor.r);
+    EXPECT_GE(earlyDusk.r, cfg.duskColor.r);
+    EXPECT_LE(earlyDusk.g, cfg.dayColor.g);
+    EXPECT_GE(earlyDusk.g, cfg.duskColor.g);
+
+    // Late dusk: dusk→night, channels decrease further
+    cycle.setNormalizedTime(0.775f);
+    TileLight lateDusk = cycle.getSkyColor();
+    EXPECT_LE(lateDusk.r, cfg.duskColor.r);
+    EXPECT_GE(lateDusk.r, cfg.nightColor.r);
+    EXPECT_LE(lateDusk.g, cfg.duskColor.g);
+    EXPECT_GE(lateDusk.g, cfg.nightColor.g);
+}
+
 // ============================================================================
 // LightingConfig Tests
 // ============================================================================

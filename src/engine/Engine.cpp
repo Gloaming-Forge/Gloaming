@@ -174,11 +174,9 @@ void Engine::processInput() {
 
     // Toggle lighting system
     if (m_input.isKeyPressed(KEY_L) && m_lightingSystem) {
-        bool enabled = m_lightingSystem->isEnabled();
-        m_lightingSystem->setEnabled(!enabled);
-        auto& cfg = const_cast<LightingSystemConfig&>(m_lightingSystem->getConfig());
-        cfg.enabled = !enabled;
-        LOG_INFO("Lighting system {}", !enabled ? "enabled" : "disabled");
+        bool wasEnabled = m_lightingSystem->getConfig().enabled;
+        m_lightingSystem->setLightingEnabled(!wasEnabled);
+        LOG_INFO("Lighting system {}", !wasEnabled ? "enabled" : "disabled");
     }
 }
 

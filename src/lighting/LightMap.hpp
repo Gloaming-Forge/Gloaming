@@ -167,6 +167,16 @@ public:
     /// Get light data for a chunk (mutable)
     ChunkLightData* getChunkData(const ChunkPosition& pos);
 
+    /// Get positions of all chunks with light data
+    std::vector<ChunkPosition> getChunkPositions() const {
+        std::vector<ChunkPosition> positions;
+        positions.reserve(m_chunks.size());
+        for (const auto& [pos, data] : m_chunks) {
+            positions.push_back(pos);
+        }
+        return positions;
+    }
+
     /// Get the world tile range covered by loaded light chunks
     void getWorldRange(int& minX, int& maxX, int& minY, int& maxY) const;
 
