@@ -92,7 +92,9 @@ public:
         auto it = m_handlers.find(eventName);
         if (it == m_handlers.end()) return false;
 
-        for (const auto& handler : it->second) {
+        // Copy handlers to allow safe modification during iteration
+        auto handlers = it->second;
+        for (const auto& handler : handlers) {
             if (handler.callback(data)) {
                 return true;  // Event cancelled
             }

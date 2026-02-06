@@ -87,34 +87,35 @@ bool ModLoader::resolveDependencies() {
         }
     }
 
-    // Check for missing dependencies
+    // Check for missing dependencies (report all errors per mod, not just first)
     for (const auto& id : enabledIds) {
         const auto& mod = m_mods[id];
+        std::vector<std::string> depErrors;
         for (const auto& dep : mod.manifest.dependencies) {
             auto it = m_mods.find(dep.id);
             if (it == m_mods.end()) {
                 LOG_ERROR("ModLoader: mod '{}' requires '{}' which was not found",
                           id, dep.id);
-                m_mods[id].state = ModState::Failed;
-                m_mods[id].errorMessage = "Missing dependency: " + dep.id;
-                break;
-            }
-            if (it->second.state == ModState::Disabled) {
+                depErrors.push_back("Missing dependency: " + dep.id);
+            } else if (it->second.state == ModState::Disabled) {
                 LOG_ERROR("ModLoader: mod '{}' requires '{}' which is disabled",
                           id, dep.id);
-                m_mods[id].state = ModState::Failed;
-                m_mods[id].errorMessage = "Disabled dependency: " + dep.id;
-                break;
-            }
-            // Check version
-            if (!dep.versionReq.satisfiedBy(it->second.manifest.version)) {
+                depErrors.push_back("Disabled dependency: " + dep.id);
+            } else if (!dep.versionReq.satisfiedBy(it->second.manifest.version)) {
                 LOG_ERROR("ModLoader: mod '{}' requires '{}' {} but found {}",
                           id, dep.id, dep.versionReq.toString(),
                           it->second.manifest.version.toString());
-                m_mods[id].state = ModState::Failed;
-                m_mods[id].errorMessage = "Version mismatch for " + dep.id;
-                break;
+                depErrors.push_back("Version mismatch for " + dep.id);
             }
+        }
+        if (!depErrors.empty()) {
+            m_mods[id].state = ModState::Failed;
+            std::string combined;
+            for (size_t i = 0; i < depErrors.size(); ++i) {
+                if (i > 0) combined += "; ";
+                combined += depErrors[i];
+            }
+            m_mods[id].errorMessage = combined;
         }
     }
 
@@ -185,6 +186,9 @@ void ModLoader::postInitMods() {
                 if (!result.valid()) {
                     sol::error err = result;
                     MOD_LOG_WARN("[{}] postInit error: {}", modId, err.what());
+                    mod.state = ModState::Failed;
+                    mod.errorMessage = "postInit error: " + std::string(err.what());
+                    continue;
                 } else {
                     MOD_LOG_DEBUG("[{}] postInit completed", modId);
                 }
@@ -216,11 +220,13 @@ void ModLoader::shutdown() {
         }
     }
 
+    // Clear mods first (releases sol::table/sol::environment references)
+    // before shutting down the Lua state that owns them
+    m_mods.clear();
+    m_loadOrder.clear();
     m_contentRegistry.clear();
     m_eventBus.clear();
     m_luaBindings.shutdown();
-    m_mods.clear();
-    m_loadOrder.clear();
 
     LOG_INFO("ModLoader: shut down");
 }

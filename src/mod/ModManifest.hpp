@@ -75,7 +75,6 @@ struct ModManifest {
     Version version;
 
     // Optional fields
-    Version engineVersion;                  // Minimum engine version
     VersionRequirement engineVersionReq;    // Engine version requirement
     std::vector<std::string> authors;
     std::string description;

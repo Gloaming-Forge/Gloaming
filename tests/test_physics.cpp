@@ -854,7 +854,7 @@ TEST(PhysicsSystemTest, CollisionCallback) {
 
     // Simulate firing an event
     CollisionEvent event;
-    event.entity = 1;
+    event.entity = static_cast<Entity>(1);
     event.withTile = true;
     event.normal = Vec2(0.0f, -1.0f);
     event.tileX = 5;
@@ -863,7 +863,7 @@ TEST(PhysicsSystemTest, CollisionCallback) {
     callback(event);
 
     EXPECT_EQ(events.size(), 1);
-    EXPECT_EQ(events[0].entity, 1);
+    EXPECT_EQ(events[0].entity, static_cast<Entity>(1));
     EXPECT_TRUE(events[0].withTile);
     EXPECT_FLOAT_EQ(events[0].normal.y, -1.0f);
 }

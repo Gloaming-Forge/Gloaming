@@ -54,7 +54,7 @@ public:
         auto& storage = m_registry.storage<entt::entity>();
         for (auto it = storage.begin(); it != storage.end(); ++it) {
             Entity entity = *it;
-            if (predicate(entity)) {
+            if (m_registry.valid(entity) && predicate(entity)) {
                 toDestroy.push_back(entity);
             }
         }
@@ -154,12 +154,15 @@ public:
         m_registry.view<Components...>().each(std::forward<Func>(func));
     }
 
-    /// Iterate over all entities
+    /// Iterate over all alive entities
     template<typename Func>
     void eachEntity(Func&& func) {
         auto& storage = m_registry.storage<entt::entity>();
         for (auto it = storage.begin(); it != storage.end(); ++it) {
-            func(*it);
+            Entity entity = *it;
+            if (m_registry.valid(entity)) {
+                func(entity);
+            }
         }
     }
 
@@ -182,13 +185,26 @@ public:
     /// Get alive entity count (not counting destroyed slots)
     size_t alive() const {
         auto* storage = m_registry.storage<entt::entity>();
-        return storage ? storage->free_list() : 0;
+        if (!storage) return 0;
+        size_t count = 0;
+        for (auto it = storage->begin(); it != storage->end(); ++it) {
+            if (m_registry.valid(*it)) {
+                ++count;
+            }
+        }
+        return count;
     }
 
     /// Check if registry is empty (no alive entities)
     bool empty() const {
         auto* storage = m_registry.storage<entt::entity>();
-        return !storage || storage->free_list() == 0;
+        if (!storage) return true;
+        for (auto it = storage->begin(); it != storage->end(); ++it) {
+            if (m_registry.valid(*it)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// Clear all entities and components

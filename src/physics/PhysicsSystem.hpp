@@ -31,14 +31,14 @@ struct PhysicsConfig {
 
 /// Collision event data
 struct CollisionEvent {
-    uint32_t entity;
+    Entity entity = NullEntity;
     Vec2 normal;
     Vec2 point;
     bool withTile = false;
     bool withEntity = false;
     int tileX = 0;
     int tileY = 0;
-    uint32_t otherEntity = 0;
+    Entity otherEntity = NullEntity;
 };
 
 /// Callback type for collision events
@@ -256,7 +256,7 @@ inline void PhysicsSystem::processEntity(Entity entity, Transform& transform, Ve
             velocity.linear.x = 0.0f;
 
             CollisionEvent event;
-            event.entity = static_cast<uint32_t>(entity);
+            event.entity = entity;
             event.withTile = true;
             event.normal = Vec2(frameVelocity.x > 0 ? -1.0f : 1.0f, 0.0f);
             if (!moveResult.collisions.empty()) {
@@ -271,7 +271,7 @@ inline void PhysicsSystem::processEntity(Entity entity, Transform& transform, Ve
             velocity.linear.y = 0.0f;
 
             CollisionEvent event;
-            event.entity = static_cast<uint32_t>(entity);
+            event.entity = entity;
             event.withTile = true;
             event.normal = Vec2(0.0f, frameVelocity.y > 0 ? -1.0f : 1.0f);
             if (!moveResult.collisions.empty()) {
@@ -379,26 +379,24 @@ inline void PhysicsSystem::handleEntityCollisions() {
 
         // Simple separation (push entities apart) and cancel colliding velocity
         auto& registry = getRegistry();
-        Entity entA = static_cast<Entity>(collision.entityA);
-        Entity entB = static_cast<Entity>(collision.entityB);
-        if (registry.has<Transform>(entA) && registry.has<Transform>(entB)) {
-            auto& transformA = registry.get<Transform>(entA);
-            auto& transformB = registry.get<Transform>(entB);
+        if (registry.has<Transform>(collision.entityA) && registry.has<Transform>(collision.entityB)) {
+            auto& transformA = registry.get<Transform>(collision.entityA);
+            auto& transformB = registry.get<Transform>(collision.entityB);
 
             Vec2 separation = resolvePenetration(collision, 0.5f);
             transformA.position = transformA.position + separation;
             transformB.position = transformB.position - separation;
 
             // Zero out velocity components along collision normal to prevent re-penetration
-            if (registry.has<Velocity>(entA)) {
-                auto& velA = registry.get<Velocity>(entA);
+            if (registry.has<Velocity>(collision.entityA)) {
+                auto& velA = registry.get<Velocity>(collision.entityA);
                 float dotA = Vec2::dot(velA.linear, collision.normal);
                 if (dotA < 0.0f) { // Only cancel if moving into collision
                     velA.linear = velA.linear - collision.normal * dotA;
                 }
             }
-            if (registry.has<Velocity>(entB)) {
-                auto& velB = registry.get<Velocity>(entB);
+            if (registry.has<Velocity>(collision.entityB)) {
+                auto& velB = registry.get<Velocity>(collision.entityB);
                 Vec2 normalB = collision.normal * -1.0f;
                 float dotB = Vec2::dot(velB.linear, normalB);
                 if (dotB < 0.0f) { // Only cancel if moving into collision

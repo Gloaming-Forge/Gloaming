@@ -95,7 +95,7 @@ bool ContentRegistry::loadTilesFromJson(const nlohmann::json& json,
         if (tileJson.contains("light_emission") && tileJson["light_emission"].is_object()) {
             const auto& light = tileJson["light_emission"];
             tile.emitsLight = true;
-            tile.lightColor = Color(
+            tile.lightColor = ContentColor(
                 static_cast<uint8_t>(light.value("r", 255)),
                 static_cast<uint8_t>(light.value("g", 255)),
                 static_cast<uint8_t>(light.value("b", 255))
@@ -164,7 +164,7 @@ bool ContentRegistry::loadItemsFromJson(const nlohmann::json& json,
         if (itemJson.contains("light_emission") && itemJson["light_emission"].is_object()) {
             const auto& light = itemJson["light_emission"];
             item.emitsLight = true;
-            item.lightColor = Color(
+            item.lightColor = ContentColor(
                 static_cast<uint8_t>(light.value("r", 255)),
                 static_cast<uint8_t>(light.value("g", 255)),
                 static_cast<uint8_t>(light.value("b", 255))

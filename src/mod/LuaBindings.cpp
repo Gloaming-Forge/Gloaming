@@ -10,6 +10,13 @@
 
 namespace gloaming {
 
+/// Validate that a relative path doesn't escape via traversal
+static bool isPathSafe(const std::string& path) {
+    if (path.find("..") != std::string::npos) return false;
+    if (!path.empty() && (path[0] == '/' || path[0] == '\\')) return false;
+    return true;
+}
+
 bool LuaBindings::init(Engine& engine, ContentRegistry& registry, EventBus& eventBus) {
     m_engine = &engine;
     m_registry = &registry;
@@ -57,14 +64,26 @@ void LuaBindings::applySandbox() {
     m_lua["package"] = sol::nil;
     m_lua["loadfile"] = sol::nil;
     m_lua["dofile"] = sol::nil;
+    m_lua["load"] = sol::nil;
     m_lua["rawget"] = sol::nil;
     m_lua["rawset"] = sol::nil;
     m_lua["rawequal"] = sol::nil;
     m_lua["rawlen"] = sol::nil;
     m_lua["collectgarbage"] = sol::nil;
 
+    // Remove string.dump (can be used to produce bytecode for sandbox escape)
+    sol::table stringLib = m_lua["string"];
+    if (stringLib.valid()) {
+        stringLib["dump"] = sol::nil;
+    }
+
     // We keep 'require' but it will be overridden per-mod to scope to the mod's directory
     m_lua["require"] = sol::nil;
+
+    // Set instruction count limit to prevent infinite loops (10 million instructions)
+    lua_sethook(m_lua.lua_state(), [](lua_State* L, lua_Debug*) {
+        luaL_error(L, "instruction limit exceeded (possible infinite loop)");
+    }, LUA_MASKCOUNT, 10000000);
 
     LOG_DEBUG("LuaBindings: sandbox applied");
 }
@@ -96,6 +115,10 @@ void LuaBindings::bindContentAPI() {
         sol::environment& env = te;
         std::string modId = env["_MOD_ID"].get_or<std::string>("");
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
+        if (!isPathSafe(path)) {
+            MOD_LOG_ERROR("content.loadTiles: path traversal rejected '{}'", path);
+            return false;
+        }
         std::string fullPath = modDir + "/" + path;
 
         std::ifstream file(fullPath);
@@ -118,6 +141,10 @@ void LuaBindings::bindContentAPI() {
         sol::environment& env = te;
         std::string modId = env["_MOD_ID"].get_or<std::string>("");
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
+        if (!isPathSafe(path)) {
+            MOD_LOG_ERROR("content.loadItems: path traversal rejected '{}'", path);
+            return false;
+        }
         std::string fullPath = modDir + "/" + path;
 
         std::ifstream file(fullPath);
@@ -140,6 +167,10 @@ void LuaBindings::bindContentAPI() {
         sol::environment& env = te;
         std::string modId = env["_MOD_ID"].get_or<std::string>("");
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
+        if (!isPathSafe(path)) {
+            MOD_LOG_ERROR("content.loadEnemies: path traversal rejected '{}'", path);
+            return false;
+        }
         std::string fullPath = modDir + "/" + path;
 
         std::ifstream file(fullPath);
@@ -162,6 +193,10 @@ void LuaBindings::bindContentAPI() {
         sol::environment& env = te;
         std::string modId = env["_MOD_ID"].get_or<std::string>("");
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
+        if (!isPathSafe(path)) {
+            MOD_LOG_ERROR("content.loadRecipes: path traversal rejected '{}'", path);
+            return false;
+        }
         std::string fullPath = modDir + "/" + path;
 
         std::ifstream file(fullPath);
@@ -384,11 +419,15 @@ sol::environment LuaBindings::createModEnvironment(const std::string& modId) {
         std::string modDir = callerEnv["_MOD_DIR"].get_or<std::string>("");
 
         // Convert module name to path (dots to slashes)
-        std::string path = moduleName;
-        for (char& c : path) {
+        std::string relPath = moduleName;
+        for (char& c : relPath) {
             if (c == '.') c = '/';
         }
-        path = modDir + "/" + path + ".lua";
+        if (!isPathSafe(relPath)) {
+            MOD_LOG_ERROR("[{}] require '{}': path traversal rejected", modId, moduleName);
+            return sol::nil;
+        }
+        std::string path = modDir + "/" + relPath + ".lua";
 
         // Check if already loaded in this mod's environment
         std::string cacheKey = "_loaded_" + moduleName;

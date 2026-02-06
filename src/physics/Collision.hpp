@@ -10,8 +10,8 @@ namespace gloaming {
 
 /// Information about a collision between two entities
 struct EntityCollision {
-    uint32_t entityA = 0;
-    uint32_t entityB = 0;
+    Entity entityA = NullEntity;
+    Entity entityB = NullEntity;
     Vec2 normal{0.0f, 0.0f};
     float penetration = 0.0f;
     Vec2 point{0.0f, 0.0f};
@@ -76,14 +76,14 @@ public:
         // Simple O(n²) broad phase - suitable for up to ~200-300 entities per frame.
         // For larger entity counts, implement spatial partitioning (grid, quadtree).
         // Performance: ~45,000 pair checks at 300 entities, ~10ms on typical hardware.
-        std::vector<std::tuple<uint32_t, Transform*, Collider*>> entities;
+        std::vector<std::tuple<Entity, Transform*, Collider*>> entities;
 
         for (auto entity : view) {
             auto& transform = view.get<Transform>(entity);
             auto& collider = view.get<Collider>(entity);
             if (collider.enabled) {
                 entities.emplace_back(
-                    static_cast<uint32_t>(entity),
+                    entity,
                     &transform,
                     &collider
                 );
@@ -121,7 +121,7 @@ public:
     /// Find collisions for a specific entity
     static std::vector<EntityCollision> findCollisionsFor(
         Registry& registry,
-        uint32_t entity,
+        Entity entity,
         const Transform& transform,
         const Collider& collider
     ) {
@@ -135,7 +135,7 @@ public:
 
         auto view = registry.view<Transform, Collider>();
         for (auto other : view) {
-            if (static_cast<uint32_t>(other) == entity) {
+            if (other == entity) {
                 continue;
             }
 
@@ -152,7 +152,7 @@ public:
             if (result.collided) {
                 EntityCollision collision;
                 collision.entityA = entity;
-                collision.entityB = static_cast<uint32_t>(other);
+                collision.entityB = other;
                 collision.normal = result.normal;
                 collision.penetration = result.penetration;
                 collision.point = result.point;
@@ -168,11 +168,11 @@ public:
     /// Returns the earliest collision if any
     static SweepResult sweepAgainstEntities(
         Registry& registry,
-        uint32_t entity,
+        Entity entity,
         const Transform& transform,
         const Collider& collider,
         Vec2 velocity,
-        uint32_t* hitEntity = nullptr
+        Entity* hitEntity = nullptr
     ) {
         SweepResult earliest;
         earliest.time = 1.0f;
@@ -185,7 +185,7 @@ public:
 
         auto view = registry.view<Transform, Collider>();
         for (auto other : view) {
-            if (static_cast<uint32_t>(other) == entity) {
+            if (other == entity) {
                 continue;
             }
 
@@ -207,7 +207,7 @@ public:
             if (result.hit && result.time < earliest.time) {
                 earliest = result;
                 if (hitEntity) {
-                    *hitEntity = static_cast<uint32_t>(other);
+                    *hitEntity = other;
                 }
             }
         }

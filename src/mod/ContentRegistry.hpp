@@ -1,7 +1,5 @@
 #pragma once
 
-#include "rendering/IRenderer.hpp"
-
 #include <nlohmann/json.hpp>
 
 #include <string>
@@ -11,6 +9,20 @@
 #include <cstdint>
 
 namespace gloaming {
+
+/// Lightweight color type for content definitions (avoids coupling to rendering)
+struct ContentColor {
+    uint8_t r = 255;
+    uint8_t g = 255;
+    uint8_t b = 255;
+    uint8_t a = 255;
+
+    constexpr ContentColor() = default;
+    constexpr ContentColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255)
+        : r(r), g(g), b(b), a(a) {}
+
+    static constexpr ContentColor White() { return {255, 255, 255, 255}; }
+};
 
 // ---------------------------------------------------------------------------
 // Content ID: "mod_id:content_id" namespacing
@@ -58,7 +70,7 @@ struct TileContentDef {
 
     // Light emission
     bool emitsLight = false;
-    Color lightColor = Color::White();
+    ContentColor lightColor = ContentColor::White();
     float lightIntensity = 0.0f;
 
     // Sounds
@@ -107,7 +119,7 @@ struct ItemDefinition {
 
     // Light emission when held
     bool emitsLight = false;
-    Color lightColor = Color::White();
+    ContentColor lightColor = ContentColor::White();
     float lightIntensity = 0.0f;
 
     // Script for custom behavior

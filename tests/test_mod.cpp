@@ -4,6 +4,9 @@
 #include "mod/EventBus.hpp"
 #include "mod/ContentRegistry.hpp"
 #include "mod/HotReload.hpp"
+#include "mod/LuaBindings.hpp"
+#include "mod/ModLoader.hpp"
+#include "engine/Engine.hpp"
 
 #include <nlohmann/json.hpp>
 #include <filesystem>
@@ -1035,4 +1038,477 @@ TEST(Integration, LoadContentFromModDirectory) {
     EXPECT_FLOAT_EQ(stone->hardness, 3.0f);
 
     fs::remove_all(tmpDir);
+}
+
+// ============================================================================
+// LuaBindings Tests
+// ============================================================================
+
+// Helper to create a minimal LuaBindings for testing
+class LuaBindingsTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        m_bindings.init(m_engine, m_registry, m_eventBus);
+    }
+
+    void TearDown() override {
+        m_eventBus.clear();  // Clear handlers that may reference Lua state
+        m_bindings.shutdown();
+    }
+
+    Engine m_engine;
+    ContentRegistry m_registry;
+    EventBus m_eventBus;
+    LuaBindings m_bindings;
+};
+
+TEST_F(LuaBindingsTest, SandboxRemovesOS) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(os == nil)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxRemovesIO) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(io == nil)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxRemovesDebug) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(debug == nil)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxRemovesLoad) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(load == nil)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxRemovesStringDump) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(string.dump == nil)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxRemovesLoadfile) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(loadfile == nil)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxRemovesDofile) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(dofile == nil)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxAllowsMath) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(math.floor(1.5) == 1)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxAllowsString) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("assert(string.len('hello') == 5)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, SandboxAllowsTable) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString("local t = {1,2,3}; assert(#t == 3)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, ModEnvironmentIsolation) {
+    auto envA = m_bindings.createModEnvironment("mod-a");
+    auto envB = m_bindings.createModEnvironment("mod-b");
+
+    m_bindings.executeString("shared_var = 42", envA, "=mod-a");
+    bool ok = m_bindings.executeString("assert(shared_var == nil)", envB, "=mod-b");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, LogAPIAvailable) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString(
+        "assert(log ~= nil); assert(type(log.info) == 'function')", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, EventsAPIAvailable) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString(
+        "assert(events ~= nil); assert(type(events.on) == 'function')", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, ContentAPIAvailable) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString(
+        "assert(content ~= nil); assert(type(content.loadTiles) == 'function')", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, PathTraversalInRequireRejected) {
+    auto env = m_bindings.createModEnvironment("test");
+    env["_MOD_DIR"] = "/tmp/gloaming_test_mod";
+    bool ok = m_bindings.executeString(
+        "local result = require('..secret.passwords'); assert(result == nil)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, ContentLoadPathTraversalRejected) {
+    auto env = m_bindings.createModEnvironment("test");
+    env["_MOD_DIR"] = "/tmp/gloaming_test_mod";
+    bool ok = m_bindings.executeString(
+        "local ok = content.loadTiles('../../etc/passwd'); assert(ok == false)", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, VectorUtilWorks) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString(R"(
+        local v = vector.normalize({x = 3, y = 4})
+        assert(math.abs(v.x - 0.6) < 0.01)
+        assert(math.abs(v.y - 0.8) < 0.01)
+    )", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, NoiseAPIWorks) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString(R"(
+        local v = noise.perlin(1.5, 42)
+        assert(type(v) == 'number')
+        local v2 = noise.perlin2d(1.0, 2.0, 42)
+        assert(type(v2) == 'number')
+    )", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+TEST_F(LuaBindingsTest, EventRoundTrip) {
+    auto env = m_bindings.createModEnvironment("test");
+    bool ok = m_bindings.executeString(R"(
+        local received = false
+        events.on("test_event", function(data)
+            received = true
+            return false
+        end)
+        events.emit("test_event", {value = 42})
+        assert(received == true)
+    )", env, "=test");
+    EXPECT_TRUE(ok);
+}
+
+// ============================================================================
+// ModLoader Tests
+// ============================================================================
+
+class ModLoaderTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        m_tmpDir = "/tmp/gloaming_modloader_test_" + std::to_string(getpid());
+        fs::create_directories(m_tmpDir);
+    }
+
+    void TearDown() override {
+        fs::remove_all(m_tmpDir);
+    }
+
+    void createMod(const std::string& id, const std::string& version = "1.0.0",
+                   const nlohmann::json& extraFields = nlohmann::json::object(),
+                   const std::string& scriptContent = "return {}") {
+        std::string modDir = m_tmpDir + "/" + id;
+        fs::create_directories(modDir + "/scripts");
+
+        nlohmann::json modJson = {
+            {"id", id},
+            {"name", id},
+            {"version", version}
+        };
+        if (extraFields.is_object() && !extraFields.empty()) {
+            modJson.update(extraFields);
+        }
+
+        std::ofstream modFile(modDir + "/mod.json");
+        modFile << modJson.dump(4);
+        modFile.close();
+
+        std::ofstream scriptFile(modDir + "/scripts/init.lua");
+        scriptFile << scriptContent;
+        scriptFile.close();
+    }
+
+    std::string m_tmpDir;
+    Engine m_engine;
+};
+
+TEST_F(ModLoaderTest, DiscoverMods) {
+    createMod("mod-a");
+    createMod("mod-b");
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    int count = loader.discoverMods();
+    EXPECT_EQ(count, 2);
+    EXPECT_EQ(loader.discoveredCount(), 2u);
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, LoadSimpleMod) {
+    createMod("simple-mod", "1.0.0", {}, R"(
+        log.info("simple-mod loading!")
+        return {
+            init = function()
+                log.info("simple-mod init!")
+            end
+        }
+    )");
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.discoverMods();
+    ASSERT_TRUE(loader.resolveDependencies());
+
+    int loaded = loader.loadMods();
+    EXPECT_EQ(loaded, 1);
+    EXPECT_TRUE(loader.isModLoaded("simple-mod"));
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, DependencyOrder) {
+    createMod("base", "1.0.0", {}, "return {}");
+    createMod("addon", "1.0.0", {
+        {"dependencies", {{{"id", "base"}, {"version", ">=1.0.0"}}}}
+    }, "return {}");
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.discoverMods();
+    ASSERT_TRUE(loader.resolveDependencies());
+
+    const auto& order = loader.getLoadOrder();
+    ASSERT_EQ(order.size(), 2u);
+
+    auto basePos = std::find(order.begin(), order.end(), "base");
+    auto addonPos = std::find(order.begin(), order.end(), "addon");
+    EXPECT_LT(basePos, addonPos);
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, DependencyCycleDetected) {
+    createMod("cycle-a", "1.0.0", {
+        {"dependencies", {{{"id", "cycle-b"}}}}
+    });
+    createMod("cycle-b", "1.0.0", {
+        {"dependencies", {{{"id", "cycle-a"}}}}
+    });
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.discoverMods();
+    EXPECT_FALSE(loader.resolveDependencies());
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, MissingDependencyFails) {
+    createMod("orphan", "1.0.0", {
+        {"dependencies", {{{"id", "nonexistent"}}}}
+    });
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.discoverMods();
+    loader.resolveDependencies();
+
+    const auto* mod = loader.getMod("orphan");
+    ASSERT_NE(mod, nullptr);
+    EXPECT_EQ(mod->state, ModState::Failed);
+    EXPECT_FALSE(mod->errorMessage.empty());
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, AllDependencyErrorsReported) {
+    createMod("multi-fail", "1.0.0", {
+        {"dependencies", {
+            {{"id", "missing-a"}},
+            {{"id", "missing-b"}}
+        }}
+    });
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.discoverMods();
+    loader.resolveDependencies();
+
+    const auto* mod = loader.getMod("multi-fail");
+    ASSERT_NE(mod, nullptr);
+    EXPECT_EQ(mod->state, ModState::Failed);
+    EXPECT_NE(mod->errorMessage.find("missing-a"), std::string::npos);
+    EXPECT_NE(mod->errorMessage.find("missing-b"), std::string::npos);
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, DisabledModNotLoaded) {
+    createMod("disabled-mod");
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.setModEnabled("disabled-mod", false);
+    loader.discoverMods();
+    loader.resolveDependencies();
+
+    int loaded = loader.loadMods();
+    EXPECT_EQ(loaded, 0);
+    EXPECT_FALSE(loader.isModLoaded("disabled-mod"));
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, ScriptErrorMarksModFailed) {
+    createMod("bad-script", "1.0.0", {}, "error('intentional error')");
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.discoverMods();
+    ASSERT_TRUE(loader.resolveDependencies());
+
+    int loaded = loader.loadMods();
+    EXPECT_EQ(loaded, 0);
+
+    const auto* mod = loader.getMod("bad-script");
+    ASSERT_NE(mod, nullptr);
+    EXPECT_EQ(mod->state, ModState::Failed);
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, ContentLoadingFromLua) {
+    std::string modDir = m_tmpDir + "/content-mod";
+    fs::create_directories(modDir + "/scripts");
+    fs::create_directories(modDir + "/content");
+
+    nlohmann::json modJson = {
+        {"id", "content-mod"},
+        {"name", "Content Mod"},
+        {"version", "1.0.0"}
+    };
+    {
+        std::ofstream f(modDir + "/mod.json");
+        f << modJson.dump(4);
+    }
+
+    nlohmann::json tilesJson = {
+        {"tiles", {
+            {{"id", "custom_dirt"}, {"name", "Custom Dirt"}, {"solid", true}}
+        }}
+    };
+    {
+        std::ofstream f(modDir + "/content/tiles.json");
+        f << tilesJson.dump(4);
+    }
+
+    {
+        std::ofstream f(modDir + "/scripts/init.lua");
+        f << R"(
+            content.loadTiles("content/tiles.json")
+            return {}
+        )";
+    }
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.discoverMods();
+    ASSERT_TRUE(loader.resolveDependencies());
+
+    int loaded = loader.loadMods();
+    EXPECT_EQ(loaded, 1);
+
+    const auto* tile = loader.getContentRegistry().getTile("content-mod:custom_dirt");
+    ASSERT_NE(tile, nullptr);
+    EXPECT_EQ(tile->name, "Custom Dirt");
+    EXPECT_TRUE(tile->solid);
+
+    loader.shutdown();
+}
+
+TEST_F(ModLoaderTest, PostInitLifecycle) {
+    createMod("lifecycle", "1.0.0", {}, R"(
+        local M = {}
+        function M.init()
+            log.info("init called")
+        end
+        function M.postInit()
+            log.info("postInit called")
+        end
+        function M.shutdown()
+            log.info("shutdown called")
+        end
+        return M
+    )");
+
+    ModLoader loader;
+    ModLoaderConfig config;
+    config.modsDirectory = m_tmpDir;
+    config.configFile = "";
+    ASSERT_TRUE(loader.init(m_engine, config));
+
+    loader.discoverMods();
+    ASSERT_TRUE(loader.resolveDependencies());
+
+    int loaded = loader.loadMods();
+    EXPECT_EQ(loaded, 1);
+    EXPECT_TRUE(loader.isModLoaded("lifecycle"));
+
+    loader.postInitMods();
+    const auto* mod = loader.getMod("lifecycle");
+    ASSERT_NE(mod, nullptr);
+    EXPECT_EQ(mod->state, ModState::PostInit);
+
+    loader.shutdown();
 }
