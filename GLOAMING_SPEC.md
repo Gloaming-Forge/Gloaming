@@ -1394,18 +1394,20 @@ mods/base-game/
 
 ---
 
-### Stage 6: Lighting System (Week 18-20)
+### Stage 6: Lighting System (Week 18-20) ✓
 **Goal:** Beautiful lighting
 
-- [ ] Per-tile light values (RGB)
-- [ ] Light propagation algorithm
-- [ ] Skylight from surface
-- [ ] Dynamic light sources
-- [ ] Smooth rendering (corner interpolation)
-- [ ] Day/night cycle (ambient changes)
-- [ ] Lighting shader
+- [x] Per-tile light values (RGB)
+- [x] Light propagation algorithm
+- [x] Skylight from surface
+- [x] Dynamic light sources
+- [x] Smooth rendering (corner interpolation)
+- [x] Day/night cycle (ambient changes)
+- [ ] Lighting shader — deferred; current implementation uses dark overlay rendering which achieves the same visual result without a custom shader
 
 **Deliverable:** Dark caves, torches glow, sunset/sunrise
+
+**Implemented:** `src/lighting/` contains LightMap (per-tile RGB light values with chunk-aligned storage, BFS flood-fill propagation, skylight penetration from surface with configurable falloff, corner interpolation for smooth rendering, cross-chunk boundary propagation), DayNightCycle (configurable cycle with Dawn/Day/Dusk/Night phases, smooth color interpolation between phases via float-safe lerp, sky brightness tracking), LightingSystem (main ECS system coordinating entity LightSource collection, chunk sync with world ChunkManager, periodic recalculation with timing stats, dark overlay rendering in flat and smooth 4-quadrant modes, setLightingEnabled toggle, configurable via config.json). Engine integration includes lighting overlay in the render pipeline (after tiles/sprites, before UI), L key toggle, HUD stats showing light source count, tile count, recalc time, time-of-day, and day count. 54 unit tests covering TileLight operations, ChunkLightData bounds, LightMap CRUD and multi-chunk ops, BFS propagation with falloff/solid blocking/colored light/multiple sources, skylight above/below surface, DayNightCycle phases/transitions/rollover with decreasing-channel regression test, cross-chunk boundary propagation, and edge cases.
 
 ---
 
@@ -1812,6 +1814,6 @@ Suggestions for early community mods (or official expansions):
 
 ---
 
-*Document Version: 0.4 (Stages 0-5 Complete)*
+*Document Version: 0.5 (Stages 0-6 Complete)*
 *Last Updated: February 2026*
-*Status: Draft — Stage 5 verified complete, Stage 6 next*
+*Status: Draft — Stage 6 verified complete, Stage 7 next*
