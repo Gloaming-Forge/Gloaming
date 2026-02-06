@@ -1411,17 +1411,19 @@ mods/base-game/
 
 ---
 
-### Stage 7: Audio System (Week 21-22)
+### Stage 7: Audio System (Week 21-22) ✓
 **Goal:** Sound and music
 
-- [ ] miniaudio integration
-- [ ] Sound effect playback
-- [ ] Positional audio
-- [ ] Music streaming with crossfade
-- [ ] Audio API for mods
-- [ ] Event→sound binding system
+- [x] miniaudio integration
+- [x] Sound effect playback
+- [x] Positional audio
+- [x] Music streaming with crossfade
+- [x] Audio API for mods
+- [x] Event→sound binding system
 
 **Deliverable:** Footsteps, tile breaking, background music
+
+**Implemented:** `src/audio/` contains AudioSystem (main ECS system coordinating sound+music, volume channels master/sfx/music/ambient, positional audio with distance attenuation and stereo pan, event→sound binding via EventBus, AudioConfig from config.json, AudioStats for HUD), SoundManager (sound definition registry with volume/pitch_variance/cooldown, lazy-loading of audio files, concurrent playback via Raylib Sound aliases, max concurrent sound limiting, quadratic distance falloff for positional audio), MusicManager (music streaming with crossfade via smoothstep interpolation, fade-in/fade-out support, pause/resume, track progress tracking). Full Lua mod API: audio.registerSound, audio.playSound (with optional position), audio.stopSound, audio.stopAllSounds, audio.playMusic (with fade_in/loop options), audio.stopMusic (with fade_out), audio.setVolume/getVolume per channel, audio.bindEvent/unbindEvent, audio.isMusicPlaying, audio.getCurrentMusic. Uses Raylib's audio API (backed by miniaudio) for actual playback. Engine integration includes audio device init/shutdown, per-frame update, camera-based listener position, HUD stats. 45 unit tests covering AudioConfig defaults, SoundDef, distance attenuation (origin/max/beyond/half/quarter/diagonal/zero/negative/symmetric/monotonic), stereo pan (center/left/right/max/clamp/zero/symmetric), crossfade smoothstep math (start/end/middle/quarter/zero/negative/beyond/monotonic/boundaries), AudioSystem construction/config/listener/stats/registration/playback-without-device.
 
 ---
 
@@ -1814,6 +1816,6 @@ Suggestions for early community mods (or official expansions):
 
 ---
 
-*Document Version: 0.5 (Stages 0-6 Complete)*
+*Document Version: 0.6 (Stages 0-7 Complete)*
 *Last Updated: February 2026*
-*Status: Draft — Stage 6 verified complete, Stage 7 next*
+*Status: Draft — Stage 7 verified complete, Stage 8 next*

@@ -105,6 +105,10 @@ add_library(gloaming_engine STATIC
     # Lighting (Stage 6)
     src/lighting/LightMap.cpp
     src/lighting/LightingSystem.cpp
+    # Audio (Stage 7)
+    src/audio/SoundManager.cpp
+    src/audio/MusicManager.cpp
+    src/audio/AudioSystem.cpp
     # Mod System (Stage 5)
     src/mod/ModManifest.cpp
     src/mod/ContentRegistry.cpp

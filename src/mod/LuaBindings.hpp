@@ -64,6 +64,9 @@ private:
     /// Bind the mods utility API (mods.isLoaded, etc.)
     void bindModsAPI();
 
+    /// Bind the audio API (audio.registerSound, audio.playSound, etc.)
+    void bindAudioAPI();
+
     /// Bind math/noise utilities
     void bindUtilAPI();
 

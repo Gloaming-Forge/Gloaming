@@ -3,6 +3,7 @@
 #include "mod/EventBus.hpp"
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
+#include "audio/AudioSystem.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -56,6 +57,7 @@ bool LuaBindings::init(Engine& engine, ContentRegistry& registry, EventBus& even
     bindContentAPI();
     bindEventsAPI();
     bindModsAPI();
+    bindAudioAPI();
     bindUtilAPI();
 
     m_initialized = true;
@@ -312,6 +314,143 @@ void LuaBindings::bindEventsAPI() {
             });
         }
         return m_eventBus->emit(eventName, data);
+    };
+}
+
+void LuaBindings::bindAudioAPI() {
+    auto audio = m_lua.create_named_table("audio");
+
+    // audio.registerSound(id, path, options)
+    // options = { volume = 0.8, pitch_variance = 0.1, cooldown = 0.1 }
+    audio["registerSound"] = [this](const std::string& id, const std::string& path,
+                                     sol::optional<sol::table> options,
+                                     sol::this_environment te) {
+        sol::environment& env = te;
+        std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
+
+        // Resolve path relative to mod directory
+        std::string fullPath = modDir.empty() ? path : (modDir + "/" + path);
+
+        float volume = 1.0f;
+        float pitchVariance = 0.0f;
+        float cooldown = 0.0f;
+
+        if (options) {
+            volume = options->get_or("volume", 1.0f);
+            pitchVariance = options->get_or("pitch_variance", 0.0f);
+            cooldown = options->get_or("cooldown", 0.0f);
+        }
+
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (audioSys) {
+            audioSys->registerSound(id, fullPath, volume, pitchVariance, cooldown);
+        }
+    };
+
+    // audio.playSound(id [, position])
+    // position = { x = ..., y = ... } (optional, for positional audio)
+    audio["playSound"] = [this](const std::string& id,
+                                 sol::optional<sol::table> position) -> uint32_t {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (!audioSys) return 0;
+
+        if (position) {
+            float x = position->get_or("x", 0.0f);
+            float y = position->get_or("y", 0.0f);
+            return audioSys->playSoundAt(id, x, y);
+        }
+        return audioSys->playSound(id);
+    };
+
+    // audio.stopSound(handle)
+    audio["stopSound"] = [this](uint32_t handle) {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (audioSys) audioSys->stopSound(handle);
+    };
+
+    // audio.stopAllSounds()
+    audio["stopAllSounds"] = [this]() {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (audioSys) audioSys->stopAllSounds();
+    };
+
+    // audio.playMusic(path [, options])
+    // options = { fade_in = 2.0, loop = true }
+    audio["playMusic"] = [this](const std::string& path, sol::optional<sol::table> options,
+                                 sol::this_environment te) {
+        sol::environment& env = te;
+        std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
+        std::string fullPath = modDir.empty() ? path : (modDir + "/" + path);
+
+        float fadeIn = 0.0f;
+        bool loop = true;
+        if (options) {
+            fadeIn = options->get_or("fade_in", 0.0f);
+            loop = options->get_or("loop", true);
+        }
+
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (audioSys) audioSys->playMusic(fullPath, fadeIn, loop);
+    };
+
+    // audio.stopMusic([options])
+    // options = { fade_out = 2.0 }
+    audio["stopMusic"] = [this](sol::optional<sol::table> options) {
+        float fadeOut = 0.0f;
+        if (options) {
+            fadeOut = options->get_or("fade_out", 0.0f);
+        }
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (audioSys) audioSys->stopMusic(fadeOut);
+    };
+
+    // audio.setVolume(channel, volume)
+    // channel = "master", "sfx", "music", "ambient"
+    audio["setVolume"] = [this](const std::string& channel, float volume) {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (!audioSys) return;
+        if (channel == "master") audioSys->setMasterVolume(volume);
+        else if (channel == "sfx") audioSys->setSfxVolume(volume);
+        else if (channel == "music") audioSys->setMusicVolume(volume);
+        else if (channel == "ambient") audioSys->setAmbientVolume(volume);
+        else MOD_LOG_WARN("audio.setVolume: unknown channel '{}'", channel);
+    };
+
+    // audio.getVolume(channel)
+    audio["getVolume"] = [this](const std::string& channel) -> float {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (!audioSys) return 0.0f;
+        if (channel == "master") return audioSys->getMasterVolume();
+        if (channel == "sfx") return audioSys->getSfxVolume();
+        if (channel == "music") return audioSys->getMusicVolume();
+        if (channel == "ambient") return audioSys->getAmbientVolume();
+        MOD_LOG_WARN("audio.getVolume: unknown channel '{}'", channel);
+        return 0.0f;
+    };
+
+    // audio.bindEvent(eventName, soundId)
+    // Simple binding: when the event fires, play the sound
+    audio["bindEvent"] = [this](const std::string& eventName, const std::string& soundId) {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (audioSys) audioSys->bindSoundToEvent(eventName, soundId);
+    };
+
+    // audio.unbindEvent(eventName)
+    audio["unbindEvent"] = [this](const std::string& eventName) {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        if (audioSys) audioSys->unbindEvent(eventName);
+    };
+
+    // audio.isMusicPlaying()
+    audio["isMusicPlaying"] = [this]() -> bool {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        return audioSys && audioSys->isMusicPlaying();
+    };
+
+    // audio.getCurrentMusic()
+    audio["getCurrentMusic"] = [this]() -> std::string {
+        AudioSystem* audioSys = m_engine->getAudioSystem();
+        return audioSys ? audioSys->getCurrentMusic() : "";
     };
 }
 
