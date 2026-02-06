@@ -19,6 +19,7 @@ add_executable(gloaming_tests
     test_world.cpp
     test_physics.cpp
     test_mod.cpp
+    test_lighting.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

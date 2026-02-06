@@ -1,6 +1,7 @@
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
 #include "rendering/RaylibRenderer.hpp"
+#include "ecs/CoreSystems.hpp"
 
 #include <raylib.h>
 
@@ -103,6 +104,27 @@ bool Engine::init(const std::string& configPath) {
 
     LOG_INFO("World system initialized");
 
+    // Initialize lighting system (Stage 6)
+    {
+        LightingSystemConfig lightCfg;
+        lightCfg.lightMap.lightFalloff = m_config.getInt("lighting.falloff", 16);
+        lightCfg.lightMap.skylightFalloff = m_config.getInt("lighting.skylight_falloff", 10);
+        lightCfg.lightMap.maxLightRadius = m_config.getInt("lighting.max_radius", 16);
+        lightCfg.lightMap.enableSkylight = m_config.getBool("lighting.skylight", true);
+        lightCfg.lightMap.enableSmoothLighting = m_config.getBool("lighting.smooth", true);
+        lightCfg.dayNight.dayDurationSeconds = m_config.getFloat("lighting.day_duration", 600.0f);
+        lightCfg.recalcInterval = m_config.getFloat("lighting.recalc_interval", 0.1f);
+        lightCfg.enabled = m_config.getBool("lighting.enabled", true);
+
+        m_lightingSystem = m_systemScheduler.addSystem<LightingSystem>(
+            SystemPhase::PostUpdate, lightCfg);
+
+        LOG_INFO("Lighting system initialized (smooth={}, skylight={}, day_duration={}s)",
+                 lightCfg.lightMap.enableSmoothLighting,
+                 lightCfg.lightMap.enableSkylight,
+                 lightCfg.dayNight.dayDurationSeconds);
+    }
+
     // Initialize mod system
     ModLoaderConfig modConfig;
     modConfig.modsDirectory = m_config.getString("mods.directory", "mods");
@@ -148,6 +170,13 @@ void Engine::processInput() {
 
     if (m_input.isKeyPressed(KEY_F11)) {
         m_window.toggleFullscreen();
+    }
+
+    // Toggle lighting system
+    if (m_input.isKeyPressed(KEY_L) && m_lightingSystem) {
+        bool wasEnabled = m_lightingSystem->getConfig().enabled;
+        m_lightingSystem->setLightingEnabled(!wasEnabled);
+        LOG_INFO("Lighting system {}", !wasEnabled ? "enabled" : "disabled");
     }
 }
 
@@ -205,8 +234,13 @@ void Engine::render() {
     // Run ECS render systems (dt=0 for render phase, timing not needed)
     m_systemScheduler.render(0.0f);
 
+    // Render lighting overlay (after tiles and sprites, before UI)
+    if (m_lightingSystem) {
+        m_lightingSystem->renderLightOverlay(m_renderer.get(), m_camera);
+    }
+
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 5: Mod Loader", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 6: Lighting System", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -237,7 +271,27 @@ void Engine::render() {
              m_modLoader.getContentRegistry().enemyCount());
     m_renderer->drawText(modText, {20, 140}, 16, Color(200, 150, 255, 255));
 
-    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | F11: Fullscreen", {20, 170}, 16, Color::Gray());
+    // Lighting info
+    if (m_lightingSystem) {
+        const auto& lStats = m_lightingSystem->getStats();
+        const auto& dnc = m_lightingSystem->getDayNightCycle();
+        const char* todStr = "?";
+        switch (dnc.getTimeOfDay()) {
+            case TimeOfDay::Dawn:  todStr = "Dawn";  break;
+            case TimeOfDay::Day:   todStr = "Day";   break;
+            case TimeOfDay::Dusk:  todStr = "Dusk";  break;
+            case TimeOfDay::Night: todStr = "Night"; break;
+        }
+        char lightText[192];
+        snprintf(lightText, sizeof(lightText),
+                 "Light: %zu sources | %zu tiles | %.1fms | %s (%.0f%% bright) | Day %d",
+                 lStats.pointLightCount, lStats.tilesLit, lStats.lastRecalcTimeMs,
+                 todStr, lStats.skyBrightness * 100.0f, dnc.getDayCount());
+        m_renderer->drawText(lightText, {20, 170}, 16, Color(255, 220, 100, 255));
+    }
+
+    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F11: Fullscreen",
+                         {20, 200}, 16, Color::Gray());
 
     m_renderer->endFrame();
 }

@@ -102,6 +102,9 @@ add_library(gloaming_engine STATIC
     src/world/TileMap.cpp
     # Physics (Stage 4)
     src/physics/PhysicsSystem.cpp
+    # Lighting (Stage 6)
+    src/lighting/LightMap.cpp
+    src/lighting/LightingSystem.cpp
     # Mod System (Stage 5)
     src/mod/ModManifest.cpp
     src/mod/ContentRegistry.cpp
