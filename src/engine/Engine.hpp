@@ -14,6 +14,7 @@
 #include "ecs/Systems.hpp"
 #include "ecs/EntityFactory.hpp"
 #include "world/TileMap.hpp"
+#include "lighting/LightingSystem.hpp"
 #include "mod/ModLoader.hpp"
 
 #include <string>
@@ -48,6 +49,9 @@ public:
     // World accessors
     TileMap& getTileMap() { return m_tileMap; }
 
+    // Lighting accessors
+    LightingSystem* getLightingSystem() { return m_lightingSystem; }
+
     // Mod system accessors
     ModLoader& getModLoader() { return m_modLoader; }
     ContentRegistry& getContentRegistry() { return m_modLoader.getContentRegistry(); }
@@ -78,6 +82,9 @@ private:
 
     // World systems
     TileMap m_tileMap;
+
+    // Lighting system (managed by SystemScheduler, raw pointer for access)
+    LightingSystem* m_lightingSystem = nullptr;
 
     // Mod system
     ModLoader m_modLoader;
