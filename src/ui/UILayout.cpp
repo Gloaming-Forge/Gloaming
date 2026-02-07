@@ -36,9 +36,6 @@ void UILayout::prepareMeasurement(UIElement* element) {
 void UILayout::computeLayout(UIElement* root, float availableWidth, float availableHeight) {
     if (!root) return;
 
-    // Set measure renderer on text elements before computing layout
-    prepareMeasurement(root);
-
     auto& style = root->getStyle();
     auto& layout = root->getLayoutMut();
 

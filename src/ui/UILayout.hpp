@@ -18,6 +18,10 @@ public:
     /// This recursively computes the layout for all children.
     void computeLayout(UIElement* root, float availableWidth, float availableHeight);
 
+    /// Set the layout renderer on all text elements in a tree.
+    /// Call once after creating/rebuilding a UI tree, not every frame.
+    void prepareMeasurement(UIElement* element);
+
 private:
     /// Resolve a dimension value given the available space and content size
     float resolveDimension(const UIDimension& dim, float available, float content) const;
@@ -39,9 +43,6 @@ private:
 
     /// Apply min/max constraints to a computed size
     float applyConstraints(float size, float minSize, float maxSize) const;
-
-    /// Set the layout renderer on text elements that need it for measurement
-    void prepareMeasurement(UIElement* element);
 
     IRenderer* m_renderer = nullptr;
 };

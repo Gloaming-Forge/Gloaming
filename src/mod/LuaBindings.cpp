@@ -604,7 +604,8 @@ static UIStyle parseStyle(const sol::table& t) {
     }
 
     // Text
-    style.fontSize = t.get_or("font_size", 20);
+    sol::optional<int> fsObj = t.get<sol::optional<int>>("font_size");
+    if (fsObj) style.fontSize = *fsObj;
     sol::optional<sol::object> tcObj = t["text_color"];
     if (tcObj) {
         if (tcObj->is<std::string>()) {
@@ -627,21 +628,17 @@ static UIStyle parseStyle(const sol::table& t) {
         else if (*ta == "right") style.textAlign = TextAlign::Right;
     }
 
-    style.visible = t.get_or("visible", true);
-    style.overflowHidden = t.get_or("overflow_hidden", false);
+    sol::optional<bool> visObj = t.get<sol::optional<bool>>("visible");
+    if (visObj) style.visible = *visObj;
+    sol::optional<bool> ohObj = t.get<sol::optional<bool>>("overflow_hidden");
+    if (ohObj) style.overflowHidden = *ohObj;
 
     return style;
 }
 
-/// Helper: apply a Lua style table to an element, merging with existing style
+/// Helper: apply a Lua style table to an element by merging only fields present
+/// in the table. This preserves constructor defaults (e.g. UIButton colors).
 static void applyStyleTable(UIElement* element, const sol::optional<sol::table>& styleTable) {
-    if (styleTable) {
-        element->setStyle(parseStyle(*styleTable));
-    }
-}
-
-/// Helper: merge a parsed style on top of an element's existing defaults
-static void mergeStyleTable(UIElement* element, const sol::optional<sol::table>& styleTable) {
     if (!styleTable) return;
     UIStyle parsed = parseStyle(*styleTable);
     UIStyle& existing = element->getStyle();
@@ -743,7 +740,7 @@ void LuaBindings::bindUIAPI() {
             sol::optional<sol::table> pcObj = props->get<sol::optional<sol::table>>("press_color");
 
             auto btn = std::make_shared<UIButton>(id, label);
-            mergeStyleTable(btn.get(), styleTable);
+            applyStyleTable(btn.get(), styleTable);
             if (onClick) {
                 sol::function fn = *onClick;
                 btn->setOnClick([fn]() {

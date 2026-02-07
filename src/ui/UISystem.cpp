@@ -37,6 +37,7 @@ void UISystem::update(float dt) {
             auto newRoot = entry.builder();
             if (newRoot) {
                 entry.root = newRoot;
+                m_layout.prepareMeasurement(entry.root.get());
             }
             entry.dirty = false;
         }
@@ -103,6 +104,9 @@ void UISystem::render() {
 }
 
 void UISystem::registerScreen(const std::string& name, std::shared_ptr<UIElement> root) {
+    if (root) {
+        m_layout.prepareMeasurement(root.get());
+    }
     m_screens[name] = {name, std::move(root), nullptr, false, false, 0};
     LOG_DEBUG("UISystem: registered static screen '{}'", name);
 }
