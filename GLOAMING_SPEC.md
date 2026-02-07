@@ -1427,13 +1427,13 @@ mods/base-game/
 
 ---
 
-### Stage 8: UI System (Week 23-26)
+### Stage 8: UI System (Week 23-26) ✓
 **Goal:** Mod-defined UI working
 
-- [ ] UI layout engine (flexbox-style)
-- [ ] Core widgets (box, text, image, button, slider)
-- [ ] Input handling (focus, navigation)
-- [ ] Lua UI API
+- [x] UI layout engine (flexbox-style)
+- [x] Core widgets (box, text, image, button, slider)
+- [x] Input handling (focus, navigation)
+- [x] Lua UI API
 - [ ] Base game: HUD
 - [ ] Base game: Main menu
 - [ ] Base game: Inventory (grid, drag-drop)
@@ -1441,6 +1441,8 @@ mods/base-game/
 - [ ] Base game: Settings
 
 **Deliverable:** Full UI flow from main menu to gameplay
+
+**Implemented:** `src/ui/` contains UITypes (SizeMode, FlexDirection, JustifyContent, AlignItems, TextAlign, UIDimension, UIEdges, UIBorder, UIStyle, UIComputedLayout), UIElement (base class with tree structure, find-by-id, render/input dispatch, focus/hover/pressed states), UIWidgets (UIBox container, UIText with alignment and measurement, UIImage with texture/source-rect/tint, UIButton with click callback and hover/press colors, UISlider with range/value/drag/onChange, UIGrid with columns/cell-size, UIScrollPanel with scroll offset and scroll-wheel), UILayout (flexbox-style layout engine with row/column/grid/scroll modes, grow distribution, justify-content start/center/end/space-between/space-around, align-items start/center/end/stretch, padding/margin/gap, min/max constraints, percent/fixed/auto/grow sizing), UIInput (focus management with Tab/Shift-Tab navigation, focus cycling, mouse event routing), UISystem (screen registry with static and dynamic/callback-driven screens, show/hide/remove, z-order sorting, per-frame layout recomputation, input routing to top-most visible screen, blocking-input flag for menus, element count stats). Full Lua mod API: ui.Box, ui.Text, ui.Image, ui.Button (with on_click), ui.Slider (with on_change), ui.Grid, ui.ScrollPanel (all with style tables supporting width/height/padding/margin/background/border/text_color/font_size/flex_direction/justify_content/align_items/gap), ui.register/ui.registerDynamic for screen management, ui.show/ui.hide/ui.isVisible/ui.remove for visibility, ui.setText/ui.setVisible/ui.setSliderValue/ui.getSliderValue for element manipulation. Style parsing supports hex colors (#RRGGBB/#RRGGBBAA), {r,g,b,a} tables, percentage strings, "auto"/"grow" keywords. Engine integration includes UI init after audio, per-frame update with layout recomputation, render after lighting overlay, camera-input blocking when UI is active, UI stats in debug HUD. 46 unit tests covering UITypes (dimensions, edges, layout containment, style defaults), UIElement (tree structure, find-by-id, focus/hover), UIWidgets (text content, button click/release, slider clamping, grid properties, scroll state), UILayout (fixed/percent/grow sizing, row/column positioning, gap, padding, justify-center, align-center/stretch, grow distribution, grid layout, min/max constraints), UIInput (focus management, Tab navigation, Shift-Tab prev, skip non-focusable), UISystem (screen registration, show/hide, remove, findById, stats), integration tests (nested containers, space-between, invisible children skipped).
 
 ---
 
@@ -1816,6 +1818,6 @@ Suggestions for early community mods (or official expansions):
 
 ---
 
-*Document Version: 0.6 (Stages 0-7 Complete)*
+*Document Version: 0.7 (Stages 0-8 Complete)*
 *Last Updated: February 2026*
-*Status: Draft — Stage 7 verified complete, Stage 8 next*
+*Status: Draft — Stage 8 verified complete, Stage 9 next*

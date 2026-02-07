@@ -51,6 +51,10 @@ bool Input::isMouseButtonDown(MouseButton button) const {
     return IsMouseButtonDown(static_cast<int>(button));
 }
 
+bool Input::isMouseButtonReleased(MouseButton button) const {
+    return IsMouseButtonReleased(static_cast<int>(button));
+}
+
 // Raw int overloads (backward compatibility)
 bool Input::isMouseButtonPressed(int button) const {
     return IsMouseButtonPressed(button);
@@ -58,6 +62,10 @@ bool Input::isMouseButtonPressed(int button) const {
 
 bool Input::isMouseButtonDown(int button) const {
     return IsMouseButtonDown(button);
+}
+
+bool Input::isMouseButtonReleased(int button) const {
+    return IsMouseButtonReleased(button);
 }
 
 float Input::getMouseWheelDelta() const {

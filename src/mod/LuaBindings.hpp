@@ -11,6 +11,7 @@ namespace gloaming {
 class Engine;
 class ContentRegistry;
 class EventBus;
+class UISystem;
 
 /// Manages the Lua scripting environment for mods.
 /// Each mod gets its own sandboxed Lua environment built from a shared state.
@@ -66,6 +67,9 @@ private:
 
     /// Bind the audio API (audio.registerSound, audio.playSound, etc.)
     void bindAudioAPI();
+
+    /// Bind the UI API (ui.register, ui.Box, ui.Text, etc.)
+    void bindUIAPI();
 
     /// Bind math/noise utilities
     void bindUtilAPI();
