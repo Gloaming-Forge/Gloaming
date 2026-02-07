@@ -40,6 +40,9 @@ private:
     /// Apply min/max constraints to a computed size
     float applyConstraints(float size, float minSize, float maxSize) const;
 
+    /// Set the layout renderer on text elements that need it for measurement
+    void prepareMeasurement(UIElement* element);
+
     IRenderer* m_renderer = nullptr;
 };
 

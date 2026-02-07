@@ -467,6 +467,22 @@ void LuaBindings::bindAudioAPI() {
     };
 }
 
+/// Helper: parse hex color string to Color, returns false on invalid input
+static bool parseHexColor(const std::string& hex, Color& out) {
+    if (hex.size() < 7 || hex[0] != '#') return false;
+    try {
+        unsigned int r = std::stoul(hex.substr(1, 2), nullptr, 16);
+        unsigned int g = std::stoul(hex.substr(3, 2), nullptr, 16);
+        unsigned int b = std::stoul(hex.substr(5, 2), nullptr, 16);
+        unsigned int a = (hex.size() >= 9) ? std::stoul(hex.substr(7, 2), nullptr, 16) : 255;
+        out = Color(r, g, b, a);
+        return true;
+    } catch (const std::exception&) {
+        MOD_LOG_WARN("Invalid hex color: '{}'", hex);
+        return false;
+    }
+}
+
 /// Helper: parse a UIStyle from a Lua table
 static UIStyle parseStyle(const sol::table& t) {
     UIStyle style;
@@ -480,8 +496,9 @@ static UIStyle parseStyle(const sol::table& t) {
             std::string ws = wObj->as<std::string>();
             if (ws == "auto") style.width = UIDimension::Auto();
             else if (ws == "grow") style.width = UIDimension::Grow();
-            else if (ws.back() == '%') {
-                style.width = UIDimension::Percent(std::stof(ws));
+            else if (!ws.empty() && ws.back() == '%') {
+                try { style.width = UIDimension::Percent(std::stof(ws)); }
+                catch (const std::exception&) { MOD_LOG_WARN("Invalid width percent: '{}'", ws); }
             }
         }
     }
@@ -494,8 +511,9 @@ static UIStyle parseStyle(const sol::table& t) {
             std::string hs = hObj->as<std::string>();
             if (hs == "auto") style.height = UIDimension::Auto();
             else if (hs == "grow") style.height = UIDimension::Grow();
-            else if (hs.back() == '%') {
-                style.height = UIDimension::Percent(std::stof(hs));
+            else if (!hs.empty() && hs.back() == '%') {
+                try { style.height = UIDimension::Percent(std::stof(hs)); }
+                catch (const std::exception&) { MOD_LOG_WARN("Invalid height percent: '{}'", hs); }
             }
         }
     }
@@ -563,14 +581,7 @@ static UIStyle parseStyle(const sol::table& t) {
     sol::optional<sol::object> bgObj = t["background"];
     if (bgObj) {
         if (bgObj->is<std::string>()) {
-            std::string hex = bgObj->as<std::string>();
-            if (hex.size() >= 7 && hex[0] == '#') {
-                unsigned int r = std::stoul(hex.substr(1, 2), nullptr, 16);
-                unsigned int g = std::stoul(hex.substr(3, 2), nullptr, 16);
-                unsigned int b = std::stoul(hex.substr(5, 2), nullptr, 16);
-                unsigned int a = (hex.size() >= 9) ? std::stoul(hex.substr(7, 2), nullptr, 16) : 255;
-                style.backgroundColor = Color(r, g, b, a);
-            }
+            parseHexColor(bgObj->as<std::string>(), style.backgroundColor);
         } else if (bgObj->is<sol::table>()) {
             sol::table c = bgObj->as<sol::table>();
             style.backgroundColor = Color(
@@ -587,11 +598,8 @@ static UIStyle parseStyle(const sol::table& t) {
     if (borderObj) {
         style.border.width = borderObj->get_or("width", 0.0f);
         sol::optional<std::string> bc = borderObj->get<sol::optional<std::string>>("color");
-        if (bc && bc->size() >= 7 && (*bc)[0] == '#') {
-            unsigned int r = std::stoul(bc->substr(1, 2), nullptr, 16);
-            unsigned int g = std::stoul(bc->substr(3, 2), nullptr, 16);
-            unsigned int b = std::stoul(bc->substr(5, 2), nullptr, 16);
-            style.border.color = Color(r, g, b, 255);
+        if (bc) {
+            parseHexColor(*bc, style.border.color);
         }
     }
 
@@ -600,13 +608,7 @@ static UIStyle parseStyle(const sol::table& t) {
     sol::optional<sol::object> tcObj = t["text_color"];
     if (tcObj) {
         if (tcObj->is<std::string>()) {
-            std::string hex = tcObj->as<std::string>();
-            if (hex.size() >= 7 && hex[0] == '#') {
-                unsigned int r = std::stoul(hex.substr(1, 2), nullptr, 16);
-                unsigned int g = std::stoul(hex.substr(3, 2), nullptr, 16);
-                unsigned int b = std::stoul(hex.substr(5, 2), nullptr, 16);
-                style.textColor = Color(r, g, b, 255);
-            }
+            parseHexColor(tcObj->as<std::string>(), style.textColor);
         } else if (tcObj->is<sol::table>()) {
             sol::table c = tcObj->as<sol::table>();
             style.textColor = Color(
@@ -631,21 +633,50 @@ static UIStyle parseStyle(const sol::table& t) {
     return style;
 }
 
-/// Helper: apply a Lua style table to an element
+/// Helper: apply a Lua style table to an element, merging with existing style
 static void applyStyleTable(UIElement* element, const sol::optional<sol::table>& styleTable) {
     if (styleTable) {
         element->setStyle(parseStyle(*styleTable));
     }
 }
 
-/// Helper: add children from a Lua table/array to a UIElement
+/// Helper: merge a parsed style on top of an element's existing defaults
+static void mergeStyleTable(UIElement* element, const sol::optional<sol::table>& styleTable) {
+    if (!styleTable) return;
+    UIStyle parsed = parseStyle(*styleTable);
+    UIStyle& existing = element->getStyle();
+    // Only overwrite fields that were explicitly set in the table
+    if ((*styleTable)["width"].valid()) existing.width = parsed.width;
+    if ((*styleTable)["height"].valid()) existing.height = parsed.height;
+    if ((*styleTable)["min_width"].valid()) existing.minWidth = parsed.minWidth;
+    if ((*styleTable)["min_height"].valid()) existing.minHeight = parsed.minHeight;
+    if ((*styleTable)["max_width"].valid()) existing.maxWidth = parsed.maxWidth;
+    if ((*styleTable)["max_height"].valid()) existing.maxHeight = parsed.maxHeight;
+    if ((*styleTable)["flex_direction"].valid()) existing.flexDirection = parsed.flexDirection;
+    if ((*styleTable)["justify_content"].valid()) existing.justifyContent = parsed.justifyContent;
+    if ((*styleTable)["align_items"].valid()) existing.alignItems = parsed.alignItems;
+    if ((*styleTable)["gap"].valid()) existing.gap = parsed.gap;
+    if ((*styleTable)["padding"].valid()) existing.padding = parsed.padding;
+    if ((*styleTable)["margin"].valid()) existing.margin = parsed.margin;
+    if ((*styleTable)["background"].valid()) existing.backgroundColor = parsed.backgroundColor;
+    if ((*styleTable)["border"].valid()) existing.border = parsed.border;
+    if ((*styleTable)["font_size"].valid()) existing.fontSize = parsed.fontSize;
+    if ((*styleTable)["text_color"].valid()) existing.textColor = parsed.textColor;
+    if ((*styleTable)["text_align"].valid()) existing.textAlign = parsed.textAlign;
+    if ((*styleTable)["visible"].valid()) existing.visible = parsed.visible;
+    if ((*styleTable)["overflow_hidden"].valid()) existing.overflowHidden = parsed.overflowHidden;
+}
+
+/// Helper: add children from a Lua table/array to a UIElement (indexed iteration)
 static void addLuaChildren(std::shared_ptr<UIElement>& parent, const sol::optional<sol::table>& childrenTable) {
     if (!childrenTable) return;
-    childrenTable->for_each([&](const sol::object& key, const sol::object& value) {
+    size_t len = childrenTable->size();
+    for (size_t i = 1; i <= len; ++i) {
+        sol::object value = (*childrenTable)[i];
         if (value.is<std::shared_ptr<UIElement>>()) {
             parent->addChild(value.as<std::shared_ptr<UIElement>>());
         }
-    });
+    }
 }
 
 void LuaBindings::bindUIAPI() {
@@ -680,9 +711,6 @@ void LuaBindings::bindUIAPI() {
         }
         auto textElem = std::make_shared<UIText>(id, text);
         applyStyleTable(textElem.get(), styleTable);
-        if (m_engine && m_engine->getRenderer()) {
-            textElem->setMeasureRenderer(m_engine->getRenderer());
-        }
         return std::static_pointer_cast<UIElement>(textElem);
     };
 
@@ -715,9 +743,7 @@ void LuaBindings::bindUIAPI() {
             sol::optional<sol::table> pcObj = props->get<sol::optional<sol::table>>("press_color");
 
             auto btn = std::make_shared<UIButton>(id, label);
-            if (styleTable) {
-                btn->setStyle(parseStyle(*styleTable));
-            }
+            mergeStyleTable(btn.get(), styleTable);
             if (onClick) {
                 sol::function fn = *onClick;
                 btn->setOnClick([fn]() {
@@ -902,6 +928,24 @@ void LuaBindings::bindUIAPI() {
     ui["remove"] = [this](const std::string& name) {
         UISystem* uiSys = m_engine->getUISystem();
         if (uiSys) uiSys->removeScreen(name);
+    };
+
+    // ui.setBlocking(name, blocking)
+    ui["setBlocking"] = [this](const std::string& name, bool blocking) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (uiSys) uiSys->setScreenBlocking(name, blocking);
+    };
+
+    // ui.setZOrder(name, zOrder)
+    ui["setZOrder"] = [this](const std::string& name, int zOrder) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (uiSys) uiSys->setScreenZOrder(name, zOrder);
+    };
+
+    // ui.markDirty(name) - mark a dynamic screen for rebuild next frame
+    ui["markDirty"] = [this](const std::string& name) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (uiSys) uiSys->markScreenDirty(name);
     };
 
     // ui.findById(id) — find an element across all visible screens

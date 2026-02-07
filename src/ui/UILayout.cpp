@@ -23,8 +23,21 @@ float UILayout::applyConstraints(float size, float minSize, float maxSize) const
     return std::max(size, 0.0f);
 }
 
+void UILayout::prepareMeasurement(UIElement* element) {
+    if (!element) return;
+    if (element->getType() == UIElementType::Text) {
+        static_cast<UIText*>(element)->setMeasureRenderer(m_renderer);
+    }
+    for (auto& child : element->getChildren()) {
+        prepareMeasurement(child.get());
+    }
+}
+
 void UILayout::computeLayout(UIElement* root, float availableWidth, float availableHeight) {
     if (!root) return;
+
+    // Set measure renderer on text elements before computing layout
+    prepareMeasurement(root);
 
     auto& style = root->getStyle();
     auto& layout = root->getLayoutMut();
@@ -83,12 +96,13 @@ void UILayout::layoutRow(UIElement* element, float innerWidth, float innerHeight
     float startY = layout.y + style.padding.top;
 
     // First pass: measure children and identify grow items
+    // info.width stores the element width (excluding margins)
     float totalFixedWidth = 0.0f;
     float totalGrowWeight = 0.0f;
     int visibleCount = 0;
 
     struct ChildInfo {
-        float width = 0.0f;
+        float width = 0.0f;  // Element width (without margins)
         float height = 0.0f;
         bool isGrow = false;
         float growWeight = 0.0f;
@@ -108,12 +122,12 @@ void UILayout::layoutRow(UIElement* element, float innerWidth, float innerHeight
             info.isGrow = true;
             info.growWeight = cs.width.value > 0.0f ? cs.width.value : 1.0f;
             totalGrowWeight += info.growWeight;
+            totalFixedWidth += cs.margin.horizontal();
         } else {
             float contentW = child->getContentWidth();
             info.width = resolveDimension(cs.width, innerWidth, contentW + cs.padding.horizontal());
-            info.width += cs.margin.horizontal();
             info.width = applyConstraints(info.width, cs.minWidth, cs.maxWidth);
-            totalFixedWidth += info.width;
+            totalFixedWidth += info.width + cs.margin.horizontal();
         }
 
         // Resolve height
@@ -137,11 +151,11 @@ void UILayout::layoutRow(UIElement* element, float innerWidth, float innerHeight
         }
     }
 
-    // Calculate total content width for justify
+    // Calculate total content width for justify (element widths + margins)
     float totalContentWidth = totalGap;
     for (size_t i = 0; i < children.size(); ++i) {
         if (!children[i]->getStyle().visible) continue;
-        totalContentWidth += infos[i].width;
+        totalContentWidth += infos[i].width + children[i]->getStyle().margin.horizontal();
     }
 
     // Apply justify-content
@@ -180,7 +194,7 @@ void UILayout::layoutRow(UIElement* element, float innerWidth, float innerHeight
         auto& cs = child->getStyle();
         auto& cl = child->getLayoutMut();
 
-        cl.width = infos[i].width - cs.margin.horizontal();
+        cl.width = infos[i].width;
         cl.height = infos[i].height;
 
         // Cross-axis alignment
@@ -202,7 +216,7 @@ void UILayout::layoutRow(UIElement* element, float innerWidth, float innerHeight
         cl.x = cursorX + cs.margin.left;
         cl.y = childY;
 
-        cursorX += infos[i].width + style.gap + justifyGap;
+        cursorX += infos[i].width + cs.margin.horizontal() + style.gap + justifyGap;
 
         // Recursively layout children
         layoutContainer(child.get(), cl.width, cl.height);
@@ -218,13 +232,14 @@ void UILayout::layoutColumn(UIElement* element, float innerWidth, float innerHei
     float startY = layout.y + style.padding.top;
 
     // First pass: measure children and identify grow items
+    // info.height stores the element height (excluding margins)
     float totalFixedHeight = 0.0f;
     float totalGrowWeight = 0.0f;
     int visibleCount = 0;
 
     struct ChildInfo {
         float width = 0.0f;
-        float height = 0.0f;
+        float height = 0.0f;  // Element height (without margins)
         bool isGrow = false;
         float growWeight = 0.0f;
     };
@@ -248,12 +263,12 @@ void UILayout::layoutColumn(UIElement* element, float innerWidth, float innerHei
             info.isGrow = true;
             info.growWeight = cs.height.value > 0.0f ? cs.height.value : 1.0f;
             totalGrowWeight += info.growWeight;
+            totalFixedHeight += cs.margin.vertical();
         } else {
             float contentH = child->getContentHeight();
             info.height = resolveDimension(cs.height, innerHeight, contentH + cs.padding.vertical());
-            info.height += cs.margin.vertical();
             info.height = applyConstraints(info.height, cs.minHeight, cs.maxHeight);
-            totalFixedHeight += info.height;
+            totalFixedHeight += info.height + cs.margin.vertical();
         }
     }
 
@@ -272,11 +287,11 @@ void UILayout::layoutColumn(UIElement* element, float innerWidth, float innerHei
         }
     }
 
-    // Calculate total content height for justify
+    // Calculate total content height for justify (element heights + margins)
     float totalContentHeight = totalGap;
     for (size_t i = 0; i < children.size(); ++i) {
         if (!children[i]->getStyle().visible) continue;
-        totalContentHeight += infos[i].height;
+        totalContentHeight += infos[i].height + children[i]->getStyle().margin.vertical();
     }
 
     // Apply justify-content
@@ -316,7 +331,7 @@ void UILayout::layoutColumn(UIElement* element, float innerWidth, float innerHei
         auto& cl = child->getLayoutMut();
 
         cl.width = infos[i].width;
-        cl.height = infos[i].height - cs.margin.vertical();
+        cl.height = infos[i].height;
 
         // Cross-axis alignment
         float childX = startX + cs.margin.left;
@@ -337,7 +352,7 @@ void UILayout::layoutColumn(UIElement* element, float innerWidth, float innerHei
         cl.x = childX;
         cl.y = cursorY + cs.margin.top;
 
-        cursorY += infos[i].height + style.gap + justifyGap;
+        cursorY += infos[i].height + cs.margin.vertical() + style.gap + justifyGap;
 
         // Recursively layout children
         layoutContainer(child.get(), cl.width, cl.height);

@@ -70,6 +70,15 @@ public:
     /// Check if a screen is visible
     bool isScreenVisible(const std::string& name) const;
 
+    /// Set whether a screen blocks game input when visible
+    void setScreenBlocking(const std::string& name, bool blocking);
+
+    /// Set the z-order for a screen (higher = rendered on top)
+    void setScreenZOrder(const std::string& name, int zOrder);
+
+    /// Mark a dynamic screen as dirty (will be rebuilt next frame)
+    void markScreenDirty(const std::string& name);
+
     /// Get a screen's root element (for modification)
     UIElement* getScreen(const std::string& name);
 
@@ -100,10 +109,11 @@ private:
     struct ScreenEntry {
         std::string name;
         std::shared_ptr<UIElement> root;
-        UIBuilderCallback builder; // If set, root is rebuilt each frame
+        UIBuilderCallback builder; // If set, root is rebuilt when dirty
         bool visible = false;
         bool blocking = false;     // If true, blocks game input when visible
         int zOrder = 0;            // Higher = rendered on top
+        bool dirty = true;         // If true, dynamic screen will be rebuilt next frame
     };
 
     /// Count elements in a subtree

@@ -84,8 +84,10 @@ public:
     float getMouseY() const;
     bool  isMouseButtonPressed(MouseButton button) const;
     bool  isMouseButtonDown(MouseButton button) const;
+    bool  isMouseButtonReleased(MouseButton button) const;
     bool  isMouseButtonPressed(int button) const;
     bool  isMouseButtonDown(int button) const;
+    bool  isMouseButtonReleased(int button) const;
     float getMouseWheelDelta() const;
 
 private:

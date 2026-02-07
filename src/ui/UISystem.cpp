@@ -32,12 +32,13 @@ void UISystem::update(float dt) {
     for (auto& [name, entry] : m_screens) {
         if (!entry.visible) continue;
 
-        // Rebuild dynamic screens
-        if (entry.builder) {
+        // Rebuild dynamic screens only when dirty
+        if (entry.builder && entry.dirty) {
             auto newRoot = entry.builder();
             if (newRoot) {
                 entry.root = newRoot;
             }
+            entry.dirty = false;
         }
 
         if (entry.root) {
@@ -119,6 +120,9 @@ void UISystem::showScreen(const std::string& name) {
     auto it = m_screens.find(name);
     if (it != m_screens.end()) {
         it->second.visible = true;
+        if (it->second.builder) {
+            it->second.dirty = true; // Ensure dynamic screens rebuild on show
+        }
         LOG_DEBUG("UISystem: showing screen '{}'", name);
     }
 }
@@ -128,6 +132,27 @@ void UISystem::hideScreen(const std::string& name) {
     if (it != m_screens.end()) {
         it->second.visible = false;
         LOG_DEBUG("UISystem: hiding screen '{}'", name);
+    }
+}
+
+void UISystem::setScreenBlocking(const std::string& name, bool blocking) {
+    auto it = m_screens.find(name);
+    if (it != m_screens.end()) {
+        it->second.blocking = blocking;
+    }
+}
+
+void UISystem::setScreenZOrder(const std::string& name, int zOrder) {
+    auto it = m_screens.find(name);
+    if (it != m_screens.end()) {
+        it->second.zOrder = zOrder;
+    }
+}
+
+void UISystem::markScreenDirty(const std::string& name) {
+    auto it = m_screens.find(name);
+    if (it != m_screens.end()) {
+        it->second.dirty = true;
     }
 }
 

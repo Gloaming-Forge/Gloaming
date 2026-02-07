@@ -1,4 +1,6 @@
 #include "ui/UIWidgets.hpp"
+#include "engine/Input.hpp"
+#include "rendering/Texture.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -88,8 +90,9 @@ void UIImage::render(IRenderer* renderer) const {
         if (m_hasSourceRect) {
             renderer->drawTextureRegion(m_texture, m_sourceRect, dest, m_tint);
         } else {
-            // Draw texture stretched to fill the element
-            Rect fullSrc(0, 0, dest.width, dest.height);
+            // Draw full texture stretched to fill the element
+            Rect fullSrc(0, 0, static_cast<float>(m_texture->getWidth()),
+                              static_cast<float>(m_texture->getHeight()));
             renderer->drawTextureRegion(m_texture, fullSrc, dest, m_tint);
         }
     }
@@ -255,6 +258,23 @@ bool UISlider::handleMouseMove(float mx, float my) {
     return false;
 }
 
+bool UISlider::handleKeyPress(int key) {
+    float step = (m_maxValue - m_minValue) * 0.05f; // 5% per press
+    if (key == static_cast<int>(Key::Left)) {
+        float oldValue = m_value;
+        setValue(m_value - step);
+        if (m_value != oldValue && m_onChange) m_onChange(m_value);
+        return true;
+    }
+    if (key == static_cast<int>(Key::Right)) {
+        float oldValue = m_value;
+        setValue(m_value + step);
+        if (m_value != oldValue && m_onChange) m_onChange(m_value);
+        return true;
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // UIGrid
 // ---------------------------------------------------------------------------
@@ -309,7 +329,7 @@ void UIScrollPanel::render(IRenderer* renderer) const {
     renderChildren(renderer);
 
     // Scrollbar indicator
-    float contentH = const_cast<UIScrollPanel*>(this)->getContentHeight();
+    float contentH = getContentHeight();
     float viewH = m_layout.height - m_style.padding.vertical();
     if (contentH > viewH && viewH > 0.0f) {
         float scrollBarHeight = std::max(20.0f, viewH * (viewH / contentH));

@@ -12,21 +12,21 @@ bool UIInput::update(UIElement* root, const Input& input) {
     // Update hover states
     root->handleMouseMove(mx, my);
 
-    // Handle mouse press
+    // Handle mouse press (fires only on the frame the button goes down)
     if (input.isMouseButtonPressed(MouseButton::Left)) {
         if (root->handleMousePress(mx, my)) {
             m_consumedInput = true;
         }
     }
 
-    // Handle mouse release
-    if (input.isMouseButtonPressed(MouseButton::Left) == false &&
-        input.isMouseButtonDown(MouseButton::Left) == false) {
-        // Check if we need to release (mouse was down last frame)
-        root->handleMouseRelease(mx, my);
+    // Handle mouse release (fires only on the frame the button goes up)
+    if (input.isMouseButtonReleased(MouseButton::Left)) {
+        if (root->handleMouseRelease(mx, my)) {
+            m_consumedInput = true;
+        }
     }
 
-    // Handle mouse move for drag operations (sliders)
+    // Handle mouse move for drag operations (sliders) while button held
     if (input.isMouseButtonDown(MouseButton::Left)) {
         if (mx != m_lastMouseX || my != m_lastMouseY) {
             root->handleMouseMove(mx, my);
@@ -49,10 +49,7 @@ bool UIInput::update(UIElement* root, const Input& input) {
     // Handle Enter/Space on focused element
     if (m_focused) {
         if (input.isKeyPressed(Key::Enter) || input.isKeyPressed(Key::Space)) {
-            if (m_focused->handleKeyPress(static_cast<int>(Key::Enter))) {
-                m_consumedInput = true;
-            }
-            // Simulate click for buttons
+            // Simulate click for focusable elements (buttons, etc.)
             auto& layout = m_focused->getLayout();
             float cx = layout.x + layout.width * 0.5f;
             float cy = layout.y + layout.height * 0.5f;
@@ -62,21 +59,17 @@ bool UIInput::update(UIElement* root, const Input& input) {
         }
 
         // Arrow keys for sliders
-        if (input.isKeyPressed(Key::Left) || input.isKeyPressed(Key::Right)) {
-            int key = static_cast<int>(input.isKeyPressed(Key::Left) ? Key::Left : Key::Right);
-            if (m_focused->handleKeyPress(key)) {
-                m_consumedInput = true;
-            }
+        if (input.isKeyPressed(Key::Left)) {
+            m_focused->handleKeyPress(static_cast<int>(Key::Left));
+            m_consumedInput = true;
+        }
+        if (input.isKeyPressed(Key::Right)) {
+            m_focused->handleKeyPress(static_cast<int>(Key::Right));
+            m_consumedInput = true;
         }
     }
 
-    // Handle scroll wheel on hovered scroll panels
-    float wheel = input.getMouseWheelDelta();
-    if (wheel != 0.0f) {
-        // Find the innermost ScrollPanel under the cursor
-        // (simple approach: check if root is scrollable)
-        // The UISystem will handle more specific scroll routing
-    }
+    // Scroll wheel routing is handled by UISystem, not here.
 
     return m_consumedInput;
 }

@@ -100,7 +100,6 @@ private:
     UICallback m_onClick;
     Color m_hoverColor = Color(80, 80, 110, 255);
     Color m_pressColor = Color(40, 40, 60, 255);
-    IRenderer* m_measureRenderer = nullptr;
 };
 
 /// Slider: a draggable value selector.
@@ -134,6 +133,7 @@ public:
     bool handleMousePress(float mx, float my) override;
     bool handleMouseRelease(float mx, float my) override;
     bool handleMouseMove(float mx, float my) override;
+    bool handleKeyPress(int key) override;
 
 private:
     void updateValueFromMouse(float mx);

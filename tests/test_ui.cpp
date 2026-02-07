@@ -6,6 +6,7 @@
 #include "ui/UILayout.hpp"
 #include "ui/UIInput.hpp"
 #include "ui/UISystem.hpp"
+#include "engine/Input.hpp"
 
 using namespace gloaming;
 
@@ -838,4 +839,288 @@ TEST(UILayoutIntegrationTest, InvisibleChildrenSkipped) {
 
     // visible2 should be directly after visible (hidden one skipped)
     EXPECT_FLOAT_EQ(visible2->getLayout().y, visible->getLayout().y + 40.0f);
+}
+
+// ============================================================================
+// UIScrollPanel Additional Tests
+// ============================================================================
+
+TEST(UIScrollPanelTest, ScrollClamping) {
+    auto scroll = std::make_shared<UIScrollPanel>("scroll");
+    scroll->getStyle().width = UIDimension::Fixed(200.0f);
+    scroll->getStyle().height = UIDimension::Fixed(100.0f);
+
+    // Add children taller than the panel
+    for (int i = 0; i < 5; ++i) {
+        auto child = std::make_shared<UIBox>("item" + std::to_string(i));
+        child->getStyle().width = UIDimension::Fixed(180.0f);
+        child->getStyle().height = UIDimension::Fixed(50.0f);
+        scroll->addChild(child);
+    }
+
+    UILayout layout;
+    layout.computeLayout(scroll.get(), 800.0f, 600.0f);
+
+    // Scroll down
+    scroll->handleScroll(-5.0f); // Negative delta = scroll down
+    EXPECT_GT(scroll->getScrollY(), 0.0f);
+
+    // Scroll should not go negative
+    scroll->setScroll(0.0f, 0.0f);
+    scroll->handleScroll(5.0f); // Positive delta = scroll up
+    EXPECT_FLOAT_EQ(scroll->getScrollY(), 0.0f); // Clamped to 0
+}
+
+TEST(UIScrollPanelTest, HandleScrollEvent) {
+    auto scroll = std::make_shared<UIScrollPanel>("scroll");
+    scroll->getLayoutMut() = {0.0f, 0.0f, 200.0f, 100.0f};
+
+    // Need children taller than the panel for scrolling to work
+    auto tall = std::make_shared<UIBox>("tall");
+    tall->getLayoutMut() = {0.0f, 0.0f, 180.0f, 300.0f};
+    scroll->addChild(tall);
+
+    EXPECT_FLOAT_EQ(scroll->getScrollY(), 0.0f);
+
+    // handleScroll with negative delta scrolls down
+    // scroll speed is 30, so delta of -2 results in scrollY += 2 * 30 = 60
+    scroll->handleScroll(-2.0f);
+    EXPECT_FLOAT_EQ(scroll->getScrollY(), 60.0f);
+}
+
+// ============================================================================
+// UISlider Arrow Key Tests
+// ============================================================================
+
+TEST(UISliderTest, ArrowKeyHandling) {
+    UISlider slider("vol");
+    slider.setRange(0.0f, 100.0f);
+    slider.setValue(50.0f);
+
+    float lastValue = -1.0f;
+    slider.setOnChange([&lastValue](float v) { lastValue = v; });
+
+    // Right arrow should increase value
+    bool handled = slider.handleKeyPress(static_cast<int>(Key::Right));
+    EXPECT_TRUE(handled);
+    EXPECT_GT(slider.getValue(), 50.0f);
+    EXPECT_FLOAT_EQ(lastValue, slider.getValue());
+
+    // Left arrow should decrease value
+    float before = slider.getValue();
+    handled = slider.handleKeyPress(static_cast<int>(Key::Left));
+    EXPECT_TRUE(handled);
+    EXPECT_LT(slider.getValue(), before);
+
+    // Non-arrow key should not be handled
+    handled = slider.handleKeyPress(static_cast<int>(Key::Space));
+    EXPECT_FALSE(handled);
+}
+
+TEST(UISliderTest, ArrowKeyClampingAtBounds) {
+    UISlider slider("s");
+    slider.setRange(0.0f, 1.0f);
+
+    // At minimum, left arrow shouldn't go below
+    slider.setValue(0.0f);
+    slider.handleKeyPress(static_cast<int>(Key::Left));
+    EXPECT_FLOAT_EQ(slider.getValue(), 0.0f);
+
+    // At maximum, right arrow shouldn't go above
+    slider.setValue(1.0f);
+    slider.handleKeyPress(static_cast<int>(Key::Right));
+    EXPECT_FLOAT_EQ(slider.getValue(), 1.0f);
+}
+
+// ============================================================================
+// UISystem Additional Tests
+// ============================================================================
+
+TEST(UISystemTest, ScreenBlockingAndZOrder) {
+    UISystem uiSys;
+
+    auto root1 = std::make_shared<UIBox>("r1");
+    auto root2 = std::make_shared<UIBox>("r2");
+
+    uiSys.registerScreen("hud", root1);
+    uiSys.registerScreen("menu", root2);
+
+    // Set blocking and z-order
+    uiSys.setScreenBlocking("menu", true);
+    uiSys.setScreenZOrder("menu", 10);
+    uiSys.setScreenZOrder("hud", 0);
+
+    // Blocking screen not visible yet
+    EXPECT_FALSE(uiSys.isBlockingInput());
+
+    uiSys.showScreen("menu");
+    // Without calling update() (requires Engine), we test the methods exist and don't crash
+    EXPECT_TRUE(uiSys.isScreenVisible("menu"));
+}
+
+TEST(UISystemTest, DynamicScreenDirtyFlag) {
+    UISystem uiSys;
+
+    int buildCount = 0;
+    uiSys.registerDynamicScreen("dynamic", [&buildCount]() -> std::shared_ptr<UIElement> {
+        buildCount++;
+        return std::make_shared<UIBox>("dyn_root");
+    });
+
+    // Dynamic screens start dirty, but won't build until visible + update
+    EXPECT_EQ(buildCount, 0);
+
+    // Mark dirty should not crash
+    uiSys.markScreenDirty("dynamic");
+}
+
+TEST(UISystemTest, MultipleScreenFindById) {
+    UISystem uiSys;
+
+    auto root1 = std::make_shared<UIBox>("r1");
+    auto child1 = std::make_shared<UIBox>("unique_child");
+    root1->addChild(child1);
+
+    auto root2 = std::make_shared<UIBox>("r2");
+
+    uiSys.registerScreen("s1", root1);
+    uiSys.registerScreen("s2", root2);
+    uiSys.showScreen("s1");
+    uiSys.showScreen("s2");
+
+    // findById searches across visible screens
+    EXPECT_EQ(uiSys.findById("unique_child"), child1.get());
+    EXPECT_EQ(uiSys.findById("r2"), root2.get());
+
+    // Hide s1 - should not find its children
+    uiSys.hideScreen("s1");
+    EXPECT_EQ(uiSys.findById("unique_child"), nullptr);
+}
+
+// ============================================================================
+// UIElement Hover Tests
+// ============================================================================
+
+TEST(UIElementTest, HoverStateFromMouseMove) {
+    auto box = std::make_shared<UIBox>("box");
+    box->getLayoutMut().x = 10.0f;
+    box->getLayoutMut().y = 10.0f;
+    box->getLayoutMut().width = 100.0f;
+    box->getLayoutMut().height = 50.0f;
+
+    EXPECT_FALSE(box->isHovered());
+
+    // Move mouse inside
+    box->handleMouseMove(50.0f, 30.0f);
+    EXPECT_TRUE(box->isHovered());
+
+    // Move mouse outside
+    box->handleMouseMove(200.0f, 200.0f);
+    EXPECT_FALSE(box->isHovered());
+}
+
+TEST(UIElementTest, NestedHoverStates) {
+    auto parent = std::make_shared<UIBox>("parent");
+    parent->getLayoutMut() = {0.0f, 0.0f, 200.0f, 200.0f};
+
+    auto child = std::make_shared<UIBox>("child");
+    child->getLayoutMut() = {10.0f, 10.0f, 50.0f, 50.0f};
+    parent->addChild(child);
+
+    // Move mouse over child (also inside parent)
+    parent->handleMouseMove(25.0f, 25.0f);
+    EXPECT_TRUE(parent->isHovered());
+    EXPECT_TRUE(child->isHovered());
+
+    // Move mouse outside child but inside parent
+    parent->handleMouseMove(100.0f, 100.0f);
+    EXPECT_TRUE(parent->isHovered());
+    EXPECT_FALSE(child->isHovered());
+}
+
+// ============================================================================
+// UIButton Hover/Press Visual State Tests
+// ============================================================================
+
+TEST(UIButtonTest, HoverAndPressStates) {
+    UIButton btn("btn", "Test");
+    btn.getLayoutMut() = {0.0f, 0.0f, 100.0f, 30.0f};
+
+    // Initial state
+    EXPECT_FALSE(btn.isHovered());
+    EXPECT_FALSE(btn.isPressed());
+
+    // Hover
+    btn.handleMouseMove(50.0f, 15.0f);
+    EXPECT_TRUE(btn.isHovered());
+    EXPECT_FALSE(btn.isPressed());
+
+    // Press
+    btn.handleMousePress(50.0f, 15.0f);
+    EXPECT_TRUE(btn.isPressed());
+
+    // Release
+    btn.handleMouseRelease(50.0f, 15.0f);
+    EXPECT_FALSE(btn.isPressed());
+}
+
+// ============================================================================
+// Layout Margin Tests
+// ============================================================================
+
+TEST(UILayoutTest, MarginInColumnLayout) {
+    UILayout layout;
+
+    auto root = std::make_shared<UIBox>("root");
+    root->getStyle().width = UIDimension::Fixed(200.0f);
+    root->getStyle().height = UIDimension::Fixed(300.0f);
+    root->getStyle().flexDirection = FlexDirection::Column;
+
+    auto child = std::make_shared<UIBox>("child");
+    child->getStyle().width = UIDimension::Fixed(100.0f);
+    child->getStyle().height = UIDimension::Fixed(40.0f);
+    child->getStyle().margin = UIEdges(10.0f);
+
+    root->addChild(child);
+    layout.computeLayout(root.get(), 800.0f, 600.0f);
+
+    // Child width should be 100 (not affected by margin)
+    EXPECT_FLOAT_EQ(child->getLayout().width, 100.0f);
+    // Child height should be 40 (not affected by margin)
+    EXPECT_FLOAT_EQ(child->getLayout().height, 40.0f);
+    // Child should be offset by margin
+    EXPECT_FLOAT_EQ(child->getLayout().x, root->getLayout().x + 10.0f);
+    EXPECT_FLOAT_EQ(child->getLayout().y, root->getLayout().y + 10.0f);
+}
+
+TEST(UILayoutTest, MarginInRowLayout) {
+    UILayout layout;
+
+    auto root = std::make_shared<UIBox>("root");
+    root->getStyle().width = UIDimension::Fixed(300.0f);
+    root->getStyle().height = UIDimension::Fixed(100.0f);
+    root->getStyle().flexDirection = FlexDirection::Row;
+
+    auto c1 = std::make_shared<UIBox>("c1");
+    c1->getStyle().width = UIDimension::Fixed(50.0f);
+    c1->getStyle().height = UIDimension::Fixed(40.0f);
+    c1->getStyle().margin = UIEdges(5.0f);
+
+    auto c2 = std::make_shared<UIBox>("c2");
+    c2->getStyle().width = UIDimension::Fixed(50.0f);
+    c2->getStyle().height = UIDimension::Fixed(40.0f);
+    c2->getStyle().margin = UIEdges(5.0f);
+
+    root->addChild(c1);
+    root->addChild(c2);
+    layout.computeLayout(root.get(), 800.0f, 600.0f);
+
+    // c1 width should be exactly 50 (margin not included in element width)
+    EXPECT_FLOAT_EQ(c1->getLayout().width, 50.0f);
+    // c1 position should include margin
+    EXPECT_FLOAT_EQ(c1->getLayout().x, root->getLayout().x + 5.0f);
+    // c2 should follow c1 with margins accounted for
+    // c2.x = root.x + c1_margin_left + c1_width + c1_margin_right + c2_margin_left
+    float expectedC2X = root->getLayout().x + 5.0f + 50.0f + 5.0f + 5.0f;
+    EXPECT_FLOAT_EQ(c2->getLayout().x, expectedC2X);
 }
