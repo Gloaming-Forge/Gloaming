@@ -18,6 +18,10 @@
 #include "audio/AudioSystem.hpp"
 #include "ui/UISystem.hpp"
 #include "mod/ModLoader.hpp"
+#include "gameplay/InputActions.hpp"
+#include "gameplay/Pathfinding.hpp"
+#include "gameplay/DialogueSystem.hpp"
+#include "gameplay/TileLayers.hpp"
 
 #include <string>
 #include <memory>
@@ -65,6 +69,12 @@ public:
     ContentRegistry& getContentRegistry() { return m_modLoader.getContentRegistry(); }
     EventBus& getEventBus() { return m_modLoader.getEventBus(); }
 
+    // Gameplay system accessors
+    InputActionMap& getInputActions() { return m_inputActions; }
+    Pathfinder& getPathfinder() { return m_pathfinder; }
+    DialogueSystem& getDialogueSystem() { return m_dialogueSystem; }
+    TileLayerManager& getTileLayerManager() { return m_tileLayers; }
+
 private:
     void processInput();
     void update(double dt);
@@ -102,6 +112,12 @@ private:
 
     // Mod system
     ModLoader m_modLoader;
+
+    // Gameplay systems (Stage 9+)
+    InputActionMap m_inputActions;
+    Pathfinder m_pathfinder;
+    DialogueSystem m_dialogueSystem;
+    TileLayerManager m_tileLayers;
 
     bool m_running = false;
 };

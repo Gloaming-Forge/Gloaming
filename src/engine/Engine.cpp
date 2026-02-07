@@ -2,6 +2,8 @@
 #include "engine/Log.hpp"
 #include "rendering/RaylibRenderer.hpp"
 #include "ecs/CoreSystems.hpp"
+#include "gameplay/Gameplay.hpp"
+#include "gameplay/GameplayLuaBindings.hpp"
 
 #include <raylib.h>
 
@@ -21,7 +23,7 @@ bool Engine::init(const std::string& configPath) {
         LOG_INFO("Configuration loaded from '{}'", configPath);
     }
 
-    LOG_INFO("Gloaming Engine v0.1.0 starting...");
+    LOG_INFO("Gloaming Engine v0.2.0 starting...");
 
     // Create window
     WindowConfig winCfg;
@@ -150,12 +152,36 @@ bool Engine::init(const std::string& configPath) {
         LOG_INFO("UI system initialized");
     }
 
+    // Initialize gameplay systems (Stage 9+)
+    {
+        // Grid movement system (for Pokemon-style games)
+        m_systemScheduler.addSystem<GridMovementSystem>(SystemPhase::PreUpdate);
+
+        // State machine system (for entity AI)
+        m_systemScheduler.addSystem<StateMachineSystem>(SystemPhase::Update);
+
+        // Camera controller system
+        m_systemScheduler.addSystem<CameraControllerSystem>(SystemPhase::PostUpdate);
+
+        // Initialize tile layer manager
+        m_tileLayers.setTileSize(m_tileRenderer.getTileSize());
+
+        LOG_INFO("Gameplay systems initialized (grid movement, state machine, camera controller, "
+                 "pathfinding, dialogue, input actions, tile layers)");
+    }
+
     // Initialize mod system
     ModLoaderConfig modConfig;
     modConfig.modsDirectory = m_config.getString("mods.directory", "mods");
     modConfig.configFile = m_config.getString("mods.config", "config/mods.json");
 
     if (m_modLoader.init(*this, modConfig)) {
+        // Register gameplay Lua APIs (available to all mods)
+        bindGameplayAPI(
+            m_modLoader.getLuaBindings().getState(),
+            *this, m_inputActions, m_pathfinder, m_dialogueSystem, m_tileLayers);
+        LOG_INFO("Gameplay Lua APIs registered");
+
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
             if (m_modLoader.resolveDependencies()) {
@@ -217,9 +243,12 @@ void Engine::update(double dt) {
     // Update parallax background auto-scrolling
     m_parallaxBg.update(dtFloat);
 
+    // Update dialogue system
+    m_dialogueSystem.update(dtFloat, m_input);
+
     // Handle camera controls for testing (Stage 1 demo)
-    // Skip if UI is consuming input
-    if (!m_uiSystem.isBlockingInput()) {
+    // Skip if UI is consuming input or dialogue is active
+    if (!m_uiSystem.isBlockingInput() && !m_dialogueSystem.isBlocking()) {
         float cameraSpeed = 300.0f * dtFloat;
         if (m_input.isKeyDown(KEY_W) || m_input.isKeyDown(KEY_UP)) {
             m_camera.move(0, -cameraSpeed);
@@ -257,13 +286,23 @@ void Engine::render() {
     // Render parallax background layers
     m_parallaxBg.render();
 
-    // Render world tiles
+    // Render tile layers: background and decoration (behind entities)
+    m_tileLayers.renderLayer(m_tileRenderer, m_camera,
+                             static_cast<int>(TileLayerIndex::Background));
+    m_tileLayers.renderLayer(m_tileRenderer, m_camera,
+                             static_cast<int>(TileLayerIndex::Decoration));
+
+    // Render world tiles (main ground layer)
     if (m_tileMap.isWorldLoaded()) {
         m_tileMap.render(m_tileRenderer, m_camera);
     }
 
     // Run ECS render systems (dt=0 for render phase, timing not needed)
     m_systemScheduler.render(0.0f);
+
+    // Render tile foreground layer (above entities)
+    m_tileLayers.renderLayer(m_tileRenderer, m_camera,
+                             static_cast<int>(TileLayerIndex::Foreground));
 
     // Render lighting overlay (after tiles and sprites, before UI)
     if (m_lightingSystem) {
@@ -273,8 +312,13 @@ void Engine::render() {
     // Render UI screens (after lighting overlay, on top of everything)
     m_uiSystem.render();
 
+    // Render dialogue box (on top of UI)
+    m_dialogueSystem.render(m_renderer.get(),
+                            m_renderer->getScreenWidth(),
+                            m_renderer->getScreenHeight());
+
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 8: UI System", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.2.0 - Stage 9: Gameplay Systems", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
