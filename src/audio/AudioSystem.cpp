@@ -7,23 +7,25 @@
 
 #include <raylib.h>
 #include <algorithm>
-#include <random>
 
 namespace gloaming {
 
 AudioSystem::AudioSystem()
     : System("AudioSystem", 10),
       m_soundManager(std::make_unique<SoundManager>()),
-      m_musicManager(std::make_unique<MusicManager>()) {
+      m_musicManager(std::make_unique<MusicManager>()),
+      m_alive(std::make_shared<bool>(true)) {
 }
 
 AudioSystem::AudioSystem(const AudioConfig& config)
     : System("AudioSystem", 10), m_config(config),
       m_soundManager(std::make_unique<SoundManager>()),
-      m_musicManager(std::make_unique<MusicManager>()) {
+      m_musicManager(std::make_unique<MusicManager>()),
+      m_alive(std::make_shared<bool>(true)) {
 }
 
 AudioSystem::~AudioSystem() {
+    *m_alive = false;
     if (m_deviceReady) {
         shutdown();
     }
@@ -62,6 +64,7 @@ void AudioSystem::initDevice() {
 
     m_musicManager->init();
     m_musicManager->setVolume(m_config.musicVolume);
+    m_musicManager->setMinCrossfade(m_config.minCrossfade);
 
     LOG_INFO("AudioSystem: initialized (master={:.0f}% sfx={:.0f}% music={:.0f}% range={})",
              m_config.masterVolume * 100.0f, m_config.sfxVolume * 100.0f,
@@ -83,6 +86,9 @@ void AudioSystem::update(float dt) {
 }
 
 void AudioSystem::shutdown() {
+    // Invalidate the alive flag so event callbacks become no-ops
+    *m_alive = false;
+
     // Remove all event bindings
     for (auto& [name, binding] : m_eventBindings) {
         if (m_eventBus && binding.handlerId != 0) {
@@ -114,7 +120,7 @@ void AudioSystem::registerSound(const std::string& id, const std::string& filePa
 }
 
 SoundHandle AudioSystem::playSound(const std::string& id) {
-    if (!m_deviceReady || !m_soundManager) return 0;
+    if (!m_deviceReady || !m_soundManager) return INVALID_SOUND_HANDLE;
     return m_soundManager->play(id, 1.0f, m_time);
 }
 
@@ -123,7 +129,7 @@ SoundHandle AudioSystem::playSoundAt(const std::string& id, Vec2 position) {
 }
 
 SoundHandle AudioSystem::playSoundAt(const std::string& id, float x, float y) {
-    if (!m_deviceReady || !m_soundManager) return 0;
+    if (!m_deviceReady || !m_soundManager) return INVALID_SOUND_HANDLE;
 
     float range = m_config.positionalRange;
 
@@ -131,23 +137,21 @@ SoundHandle AudioSystem::playSoundAt(const std::string& id, float x, float y) {
     float attenuation = SoundManager::calculateDistanceAttenuation(
         x, y, m_listenerPos.x, m_listenerPos.y, range);
 
-    if (attenuation <= 0.0f) return 0;  // Too far away, don't play
+    if (attenuation <= 0.0f) return INVALID_SOUND_HANDLE;  // Too far away
 
     // Calculate stereo pan
     float pan = SoundManager::calculatePan(x, m_listenerPos.x, range);
 
     // Get the sound definition for base volume and pitch variance
     const SoundDef* def = m_soundManager->getSoundDef(id);
-    if (!def) return 0;
+    if (!def) return INVALID_SOUND_HANDLE;
 
     float volume = def->baseVolume * attenuation * m_config.sfxVolume;
 
-    // Apply pitch variance
+    // Apply pitch variance using shared RNG
     float pitch = 1.0f;
     if (def->pitchVariance > 0.0f) {
-        static thread_local std::mt19937 rng(std::random_device{}());
-        std::uniform_real_distribution<float> dist(-def->pitchVariance, def->pitchVariance);
-        pitch = 1.0f + dist(rng);
+        pitch = 1.0f + randomPitchOffset(def->pitchVariance);
     }
 
     return m_soundManager->playWithParams(id, volume, pitch, pan, m_time);
@@ -240,11 +244,16 @@ void AudioSystem::bindSoundToEvent(const std::string& eventName, const std::stri
     binding.eventName = eventName;
     binding.soundId = soundId;
 
-    // Capture a pointer to this AudioSystem for the callback
+    // Capture a weak_ptr<bool> guard alongside the raw pointer. The callback
+    // checks the guard before dereferencing 'self', preventing use-after-free
+    // if the AudioSystem is destroyed before the EventBus removes the handler.
+    std::weak_ptr<bool> weak = m_alive;
     AudioSystem* self = this;
     binding.handlerId = m_eventBus->on(eventName,
-        [self, soundId](const EventData& data) -> bool {
-            // Check if position data is provided
+        [weak, self, soundId](const EventData& data) -> bool {
+            auto alive = weak.lock();
+            if (!alive || !*alive) return false;
+
             if (data.hasFloat("x") && data.hasFloat("y")) {
                 float x = data.getFloat("x");
                 float y = data.getFloat("y");

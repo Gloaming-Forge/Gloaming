@@ -1,10 +1,10 @@
 #pragma once
 
+#include "audio/AudioTypes.hpp"
 #include "ecs/Systems.hpp"
 #include "rendering/IRenderer.hpp"  // For Vec2
 
 #include <string>
-#include <cstdint>
 #include <memory>
 #include <unordered_map>
 
@@ -15,9 +15,6 @@ class SoundManager;
 class MusicManager;
 class EventBus;
 
-/// Sound handle for tracking playing sounds
-using SoundHandle = uint32_t;
-
 /// Configuration for the audio system
 struct AudioConfig {
     bool enabled = true;
@@ -27,6 +24,7 @@ struct AudioConfig {
     float ambientVolume = 0.8f;
     int maxConcurrentSounds = 32;
     float positionalRange = 1000.0f;  // World units for max hearing distance
+    float minCrossfade = 0.5f;        // Minimum crossfade duration in seconds (0 = allow instant)
 };
 
 /// Runtime statistics for the audio system
@@ -163,6 +161,11 @@ private:
     };
     std::unordered_map<std::string, EventBinding> m_eventBindings;
     EventBus* m_eventBus = nullptr;
+
+    // Weak-reference guard for event callbacks. Shared with lambdas registered
+    // on the EventBus so they can detect AudioSystem destruction and become
+    // no-ops, preventing dangling-pointer dereferences.
+    std::shared_ptr<bool> m_alive;
 };
 
 } // namespace gloaming

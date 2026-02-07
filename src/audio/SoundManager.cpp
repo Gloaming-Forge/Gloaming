@@ -3,7 +3,6 @@
 
 #include <cmath>
 #include <algorithm>
-#include <random>
 
 namespace gloaming {
 
@@ -91,12 +90,10 @@ SoundHandle SoundManager::play(const std::string& id, float volumeMultiplier,
 
     const SoundDef& def = defIt->second;
 
-    // Apply pitch variance
+    // Apply pitch variance using shared RNG
     float pitch = 1.0f;
     if (def.pitchVariance > 0.0f) {
-        static thread_local std::mt19937 rng(std::random_device{}());
-        std::uniform_real_distribution<float> dist(-def.pitchVariance, def.pitchVariance);
-        pitch = 1.0f + dist(rng);
+        pitch = 1.0f + randomPitchOffset(def.pitchVariance);
     }
 
     float volume = def.baseVolume * volumeMultiplier * m_sfxVolume;
@@ -147,8 +144,9 @@ SoundHandle SoundManager::playWithParams(const std::string& id, float volume, fl
 
     def.lastPlayTime = currentTime;
 
+    SoundHandle handle = instance.handle;
     m_activeSounds.push_back(std::move(instance));
-    return instance.handle;
+    return handle;
 }
 
 void SoundManager::stop(SoundHandle handle) {

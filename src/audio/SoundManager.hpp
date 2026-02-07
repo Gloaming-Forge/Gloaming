@@ -1,17 +1,14 @@
 #pragma once
 
+#include "audio/AudioTypes.hpp"
+
 #include <raylib.h>
 
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <cstdint>
 
 namespace gloaming {
-
-/// Sound handle for tracking playing sounds
-using SoundHandle = uint32_t;
-constexpr SoundHandle INVALID_SOUND_HANDLE = 0;
 
 /// Definition of a registered sound effect
 struct SoundDef {

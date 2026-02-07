@@ -328,7 +328,11 @@ void LuaBindings::bindAudioAPI() {
         sol::environment& env = te;
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
 
-        // Resolve path relative to mod directory
+        // Validate and resolve path relative to mod directory
+        if (!modDir.empty() && !isPathSafe(modDir, path)) {
+            MOD_LOG_WARN("audio.registerSound: path '{}' escapes mod directory", path);
+            return;
+        }
         std::string fullPath = modDir.empty() ? path : (modDir + "/" + path);
 
         float volume = 1.0f;
@@ -380,6 +384,12 @@ void LuaBindings::bindAudioAPI() {
                                  sol::this_environment te) {
         sol::environment& env = te;
         std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
+
+        // Validate path stays within mod directory
+        if (!modDir.empty() && !isPathSafe(modDir, path)) {
+            MOD_LOG_WARN("audio.playMusic: path '{}' escapes mod directory", path);
+            return;
+        }
         std::string fullPath = modDir.empty() ? path : (modDir + "/" + path);
 
         float fadeIn = 0.0f;

@@ -41,7 +41,7 @@ void MusicManager::play(const std::string& filePath, float fadeInSeconds, bool l
 
         // Start fading out previous track
         m_fadingOut = true;
-        m_fadeOutDuration = std::max(fadeInSeconds, 0.5f);  // At least 0.5s crossfade
+        m_fadeOutDuration = std::max(fadeInSeconds, m_minCrossfade);
         m_fadeOutElapsed = 0.0f;
     }
 

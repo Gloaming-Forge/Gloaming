@@ -59,6 +59,10 @@ public:
     void setVolume(float volume) { m_musicVolume = std::max(0.0f, std::min(1.0f, volume)); }
     float getVolume() const { return m_musicVolume; }
 
+    /// Set the minimum crossfade duration in seconds (0 = allow instant switch)
+    void setMinCrossfade(float seconds) { m_minCrossfade = std::max(0.0f, seconds); }
+    float getMinCrossfade() const { return m_minCrossfade; }
+
     // ---- Crossfade math (static, testable without device) ----
 
     /// Calculate fade progress given elapsed time and fade duration
@@ -91,6 +95,7 @@ private:
     bool m_stoppingFade = false;   // Simple stop with fade
 
     float m_musicVolume = 1.0f;
+    float m_minCrossfade = 0.5f;
     bool m_initialized = false;
     bool m_paused = false;
 };

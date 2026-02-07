@@ -19,6 +19,7 @@ TEST(AudioConfigTest, Defaults) {
     EXPECT_FLOAT_EQ(cfg.ambientVolume, 0.8f);
     EXPECT_EQ(cfg.maxConcurrentSounds, 32);
     EXPECT_FLOAT_EQ(cfg.positionalRange, 1000.0f);
+    EXPECT_FLOAT_EQ(cfg.minCrossfade, 0.5f);
 }
 
 TEST(AudioConfigTest, CustomValues) {

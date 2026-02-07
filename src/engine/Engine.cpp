@@ -135,6 +135,7 @@ bool Engine::init(const std::string& configPath) {
         audioCfg.ambientVolume = m_config.getFloat("audio.ambient_volume", 0.8f);
         audioCfg.maxConcurrentSounds = m_config.getInt("audio.max_sounds", 32);
         audioCfg.positionalRange = m_config.getFloat("audio.positional_range", 1000.0f);
+        audioCfg.minCrossfade = m_config.getFloat("audio.min_crossfade", 0.5f);
 
         m_audioSystem = m_systemScheduler.addSystem<AudioSystem>(
             SystemPhase::PostUpdate, audioCfg);
@@ -311,13 +312,13 @@ void Engine::render() {
     // Audio info
     if (m_audioSystem) {
         auto aStats = m_audioSystem->getStats();
-        char audioText[192];
-        snprintf(audioText, sizeof(audioText),
-                 "Audio: %s | %zu sounds registered | %zu playing | Music: %s",
-                 aStats.deviceInitialized ? "ready" : "no device",
-                 aStats.registeredSounds, aStats.activeSounds,
-                 aStats.musicPlaying ? aStats.currentMusic.c_str() : "none");
-        m_renderer->drawText(audioText, {20, 200}, 16, Color(150, 255, 150, 255));
+        std::string audioText = "Audio: ";
+        audioText += aStats.deviceInitialized ? "ready" : "no device";
+        audioText += " | " + std::to_string(aStats.registeredSounds) + " sounds registered";
+        audioText += " | " + std::to_string(aStats.activeSounds) + " playing";
+        audioText += " | Music: ";
+        audioText += aStats.musicPlaying ? aStats.currentMusic : "none";
+        m_renderer->drawText(audioText.c_str(), {20, 200}, 16, Color(150, 255, 150, 255));
     }
 
     m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F11: Fullscreen",
