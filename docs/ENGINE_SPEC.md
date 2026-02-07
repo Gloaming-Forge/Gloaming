@@ -383,7 +383,7 @@ end)
 - Swept collision for fast objects
 - Raycasting against tiles and entities
 - Trigger volumes with callbacks
-- Collision layers and masks (Default, Player, Enemy, Projectile, Tile, Trigger, Item, NPC)
+- Collision layers and masks with Lua API (see §5.10 for details)
 - Configurable gravity vector (any direction, or zero for top-down games)
 - 45-degree slope support
 - One-way platform support
@@ -655,6 +655,421 @@ tile_layers.set(x, y, tile_layers.FOREGROUND, tree_canopy_id)
 local tile = tile_layers.get(x, y, tile_layers.DECORATION)
 ```
 
+### 5.9 Sprite Animation
+
+Frame-based sprite animation system with named animation states. Integrates with the FSM so that state transitions automatically trigger animation changes.
+
+**Engine provides:**
+- AnimationController component with named animation clips
+- Frame-based playback with configurable FPS per clip
+- Loop, once, ping-pong playback modes
+- Animation events (callbacks at specific frames — e.g., "spawn projectile on frame 3")
+- Direction-aware animations (walk_down, walk_up, walk_left, walk_right)
+- Blend between animations (optional crossfade for smoother transitions)
+- Sprite sheet atlas integration (row/column frame indexing)
+
+| Playback Mode | Behavior | Use Case |
+|---------------|----------|----------|
+| **Loop** | Repeats indefinitely | Walk cycles, idle |
+| **Once** | Plays once, holds last frame | Attack swing, death |
+| **PingPong** | Forward then reverse | Breathing, pulsing |
+
+```lua
+-- Define animations from a sprite sheet
+animation.add(player, "idle_down",  { sheet = "player.png", row = 0, frames = 4, fps = 6 })
+animation.add(player, "walk_down",  { sheet = "player.png", row = 1, frames = 6, fps = 10 })
+animation.add(player, "walk_up",    { sheet = "player.png", row = 2, frames = 6, fps = 10 })
+animation.add(player, "walk_left",  { sheet = "player.png", row = 3, frames = 6, fps = 10 })
+animation.add(player, "walk_right", { sheet = "player.png", row = 4, frames = 6, fps = 10 })
+animation.add(player, "attack",     { sheet = "player.png", row = 5, frames = 4, fps = 12, mode = "once" })
+
+-- Play an animation
+animation.play(player, "walk_down")
+
+-- Set animation event (e.g., spawn hit effect on attack frame 3)
+animation.on_frame(player, "attack", 3, function(e)
+    spawn_hit_effect(e)
+end)
+
+-- Query state
+local name = animation.current(player)       -- "walk_down"
+local done = animation.is_finished(player)   -- true if "once" mode completed
+
+-- Direction-aware helper: auto-selects walk_up/down/left/right based on facing
+animation.play_directional(player, "walk", facing)
+```
+
+### 5.10 Collision Layers & Masks
+
+Fine-grained collision filtering so entities can selectively collide with or ignore each other.
+
+**Engine provides:**
+- 16-bit collision layer bitmask per entity (which layers this entity occupies)
+- 16-bit collision mask per entity (which layers this entity collides with)
+- Named layer constants for readability
+- Runtime toggling (e.g., disable player-enemy collision during invincibility frames)
+- Trigger volumes respect layer filtering
+
+| Layer | Bit | Default Collides With |
+|-------|-----|----------------------|
+| Default | 0 | Everything |
+| Player | 1 | Tile, Enemy, NPC, Item, Trigger |
+| Enemy | 2 | Tile, Player, Projectile |
+| NPC | 3 | Tile, Player |
+| Projectile | 4 | Tile, Enemy (player projectiles) or Player (enemy projectiles) |
+| Item | 5 | Tile, Player |
+| Trigger | 6 | Player |
+| Tile | 7 | Player, Enemy, NPC, Projectile, Item |
+
+```lua
+-- Set collision layers
+collision.set_layer(player, "player")
+collision.set_mask(player, { "tile", "enemy", "npc", "item", "trigger" })
+
+-- During invincibility frames, stop colliding with enemies
+collision.remove_mask(player, "enemy")
+timer.after(1.5, function()
+    collision.add_mask(player, "enemy")
+end)
+
+-- Player projectile only hits enemies and tiles
+collision.set_layer(arrow, "projectile")
+collision.set_mask(arrow, { "tile", "enemy" })
+
+-- NPCs block the player but not each other
+collision.set_layer(npc, "npc")
+collision.set_mask(npc, { "tile", "player" })
+```
+
+### 5.11 Entity Spawning from Lua
+
+Dynamic entity creation at runtime — enemies, projectiles, items, effects.
+
+**Engine provides:**
+- `entity.create()` for blank entities
+- `entity.spawn(type, x, y)` for content-registry entities (enemies, NPCs, items)
+- `entity.destroy(id)` for cleanup
+- Component add/get/set from Lua for custom entity composition
+- Entity query by type, position, or component
+
+```lua
+-- Create a blank entity and compose it manually
+local e = entity.create()
+entity.set_position(e, 100, 200)
+entity.set_sprite(e, "textures/spark.png")
+entity.set_velocity(e, 0, -50)
+
+-- Spawn a registered enemy type at a position
+local bat = entity.spawn("bat", player_x + 200, player_y - 100)
+
+-- Spawn an item drop
+local drop = entity.spawn_item("copper_ore", x, y)
+
+-- Destroy an entity
+entity.destroy(bat)
+
+-- Query entities
+local nearby = entity.find_in_radius(x, y, 100, { type = "enemy" })
+for _, e in ipairs(nearby) do
+    -- process each nearby enemy
+end
+
+-- Component access
+entity.set_component(e, "health", { current = 50, max = 100 })
+local hp = entity.get_component(e, "health")
+```
+
+### 5.12 Projectile System
+
+Spawns entities with velocity, checks collision against targets, deals damage, and auto-despawns. Covers arrows, bullets, thrown items, magic bolts.
+
+**Engine provides:**
+- Projectile component with speed, damage, lifetime, pierce count
+- Collision filtering via collision layers (player vs enemy projectiles)
+- Auto-rotation to face movement direction
+- Gravity-affected projectiles (arcing arrows) or straight-line
+- On-hit callbacks for custom effects (explosion, poison, etc.)
+- Auto-despawn on collision or after max lifetime/distance
+
+```lua
+-- Fire an arrow from the player toward the cursor
+local arrow = projectile.spawn({
+    owner = player,
+    x = player_x, y = player_y,
+    speed = 400,
+    angle = angle_to_cursor,
+    damage = 10,
+    sprite = "textures/arrow.png",
+    gravity = true,           -- arc like a real arrow
+    lifetime = 3.0,           -- despawn after 3 seconds
+    pierce = 0,               -- 0 = destroy on first hit
+    layer = "projectile",
+    hits = { "enemy", "tile" }
+})
+
+-- Fire a straight laser bolt (flight game)
+projectile.spawn({
+    owner = player,
+    x = gun_x, y = gun_y,
+    speed = 800,
+    angle = 0,               -- straight right
+    damage = 5,
+    sprite = "textures/bullet.png",
+    gravity = false,
+    lifetime = 2.0,
+    hits = { "enemy" },
+    on_hit = function(proj, target)
+        spawn_sparks(proj.x, proj.y)
+    end
+})
+
+-- Bomb drop (Sopwith-style)
+projectile.spawn({
+    owner = player,
+    x = plane_x, y = plane_y,
+    speed = 50,
+    angle = 90,              -- straight down
+    damage = 40,
+    gravity = true,
+    hits = { "enemy", "tile" },
+    on_hit = function(proj, target)
+        explosion(proj.x, proj.y, 48)  -- area damage
+    end
+})
+```
+
+### 5.13 Scene / Level Management
+
+For room-based or level-based games where discrete areas are loaded independently.
+
+**Engine provides:**
+- Named scenes with their own tile data, entity spawns, and configuration
+- Scene transitions (instant, fade, slide, custom)
+- Scene stack for overlays (pause menu scene on top of gameplay scene)
+- Persistent entities that survive scene transitions (player)
+- Scene-local entities that are destroyed on exit
+- Entry/exit callbacks for setup and teardown
+
+```lua
+-- Define scenes
+scene.register("overworld", {
+    tiles = "data/overworld_tiles.bin",
+    on_enter = function()
+        music.play("overworld_theme")
+        spawn_overworld_npcs()
+    end,
+    on_exit = function()
+        save_overworld_state()
+    end
+})
+
+scene.register("house_1", {
+    tiles = "data/house1_tiles.bin",
+    camera = { mode = "locked", x = 160, y = 120 },
+    on_enter = function()
+        music.play("indoor_theme")
+        spawn_house_npcs()
+    end
+})
+
+-- Transition between scenes
+scene.go_to("house_1", { transition = "fade", duration = 0.5 })
+
+-- Mark the player entity as persistent (survives scene transitions)
+scene.set_persistent(player)
+
+-- Scene stack for overlays
+scene.push("pause_menu")   -- pauses game, shows menu
+scene.pop()                 -- resumes game
+```
+
+### 5.14 Particle System
+
+Data-driven particle emitters for visual effects — dust, sparks, fire, rain, leaves.
+
+**Engine provides:**
+- Particle emitter component attachable to entities or world positions
+- Configurable: count, lifetime, speed, spread angle, gravity, color, fade, size curve
+- Burst mode (emit N particles at once) and continuous mode (emit N per second)
+- Texture or colored-rectangle particles
+- Particle pool for zero-allocation emission
+
+```lua
+-- Dust puff when landing
+particles.burst({
+    x = player_x, y = player_y + 8,
+    count = 8,
+    speed = { min = 20, max = 60 },
+    angle = { min = -160, max = -20 },  -- upward fan
+    lifetime = { min = 0.2, max = 0.5 },
+    size = { start = 3, finish = 1 },
+    color = { r = 180, g = 160, b = 120, a = 200 },
+    fade = true,
+    gravity = 100
+})
+
+-- Attach a torch flame emitter to an entity
+local emitter = particles.attach(torch_entity, {
+    rate = 15,                          -- particles per second
+    speed = { min = 10, max = 30 },
+    angle = { min = -100, max = -80 },  -- mostly upward
+    lifetime = { min = 0.3, max = 0.6 },
+    color_start = { r = 255, g = 200, b = 50, a = 255 },
+    color_end   = { r = 255, g = 80,  b = 0,  a = 0 },
+    size = { start = 4, finish = 1 },
+    offset = { x = 0, y = -4 }
+})
+
+-- Rain across the screen
+particles.spawn_emitter({
+    x = camera.x, y = camera.y - 200,
+    width = camera.width + 100,         -- emitter spans full screen width
+    rate = 200,
+    speed = { min = 300, max = 400 },
+    angle = { min = 80, max = 100 },    -- mostly downward
+    lifetime = { min = 0.5, max = 1.0 },
+    size = { start = 2, finish = 2 },
+    color = { r = 150, g = 180, b = 220, a = 150 },
+    follow_camera = true
+})
+```
+
+### 5.15 Timer / Scheduler
+
+Simple time-based callbacks for delayed and repeating actions. Saves modders from manually tracking elapsed time in every `onUpdate`.
+
+**Engine provides:**
+- `timer.after(seconds, callback)` — one-shot delayed call
+- `timer.every(seconds, callback)` — repeating call
+- `timer.cancel(id)` — cancel a pending timer
+- Timers are paused when the game is paused
+- Entity-scoped timers that auto-cancel when the entity is destroyed
+
+```lua
+-- Flash invincibility for 1.5 seconds
+collision.remove_mask(player, "enemy")
+animation.set_flash(player, true)
+timer.after(1.5, function()
+    collision.add_mask(player, "enemy")
+    animation.set_flash(player, false)
+end)
+
+-- Spawn an enemy every 10 seconds
+local spawn_timer = timer.every(10.0, function()
+    local x = math.random(0, world_width)
+    entity.spawn("bat", x, 0)
+end)
+
+-- Cancel spawning when the boss appears
+timer.cancel(spawn_timer)
+
+-- Entity-scoped timer (auto-cancels if entity is destroyed)
+timer.after_for(npc, 3.0, function()
+    fsm.set_state(npc, "patrol")
+end)
+```
+
+### 5.16 Save / Load for Gameplay State
+
+Key-value persistence for mod-specific data — quest progress, player stats, NPC state, custom flags. Stored alongside the world save.
+
+**Engine provides:**
+- `save.set(key, value)` — store a value (string, number, boolean, or table)
+- `save.get(key, default)` — retrieve a value with fallback
+- `save.delete(key)` — remove a key
+- Auto-save with the world file
+- Per-mod namespacing (mods can't overwrite each other's data)
+- Bulk save/load for efficiency
+
+```lua
+-- Track quest progress
+save.set("quest_1_complete", true)
+save.set("player_level", 5)
+save.set("npc_guide_met", true)
+
+-- Retrieve with defaults
+local level = save.get("player_level", 1)
+local quest_done = save.get("quest_1_complete", false)
+
+-- Save complex data (serialized as JSON internally)
+save.set("inventory", {
+    { id = "copper_sword", count = 1, slot = 1 },
+    { id = "torch", count = 15, slot = 2 }
+})
+local inv = save.get("inventory", {})
+```
+
+### 5.17 Tweening / Easing
+
+Interpolate entity properties over time for UI animations, camera shakes, scaling effects, and general "juice".
+
+**Engine provides:**
+- Tween any numeric entity property (position, scale, rotation, alpha)
+- Standard easing functions (linear, ease_in/out/in_out for quad, cubic, elastic, bounce, back)
+- Chainable tweens (sequence: move, then fade, then destroy)
+- Tween cancellation and completion callbacks
+- Camera shake helper
+
+| Easing | Feel | Use Case |
+|--------|------|----------|
+| **linear** | Constant speed | Progress bars |
+| **ease_out_quad** | Fast start, soft stop | UI slides |
+| **ease_in_out_cubic** | Smooth both ends | Camera pans |
+| **ease_out_elastic** | Overshoot + settle | Pop-in effects |
+| **ease_out_bounce** | Bouncing stop | Item drops |
+| **ease_in_back** | Pull back then go | Button press |
+
+```lua
+-- Slide a UI element into view
+tween.to(panel, { x = 100 }, 0.3, "ease_out_quad")
+
+-- Scale up an item pickup notification, then fade out
+tween.to(popup, { scale = 1.5 }, 0.2, "ease_out_elastic", function()
+    tween.to(popup, { alpha = 0 }, 0.5, "linear", function()
+        entity.destroy(popup)
+    end)
+end)
+
+-- Camera shake on damage
+tween.shake(camera, { intensity = 8, duration = 0.3, decay = "ease_out_quad" })
+
+-- Tween with cancellation
+local t = tween.to(door, { y = door_y - 32 }, 1.0, "ease_in_out_cubic")
+tween.cancel(t)  -- stop mid-tween
+```
+
+### 5.18 Debug Drawing
+
+Overlay drawing from Lua for visualizing collision boxes, pathfinding, trigger volumes, and custom debug info during development.
+
+**Engine provides:**
+- Draw rectangles, circles, lines, and points in world or screen space
+- Draw text labels at positions
+- Path visualization (draw a sequence of connected points)
+- Auto-clear each frame (no manual cleanup)
+- Globally togglable (one key to hide all debug draws)
+- Color and opacity control
+
+```lua
+-- Visualize an entity's collision box
+debug.draw_rect(entity_x, entity_y, width, height, { r = 0, g = 255, b = 0, a = 100 })
+
+-- Draw a pathfinding result
+debug.draw_path(path, { r = 255, g = 255, b = 0 })
+
+-- Show trigger volume
+debug.draw_circle(trigger_x, trigger_y, trigger_radius, { r = 255, g = 0, b = 0, a = 80 })
+
+-- Label an entity for debugging
+debug.draw_text("State: " .. fsm.get_state(npc), npc_x, npc_y - 16)
+
+-- Screen-space debug info (not affected by camera)
+debug.draw_text_screen("Entities: " .. entity.count(), 20, 300)
+
+-- Toggle all debug drawing (also bound to F3 by default)
+debug.set_enabled(true)
+```
+
 ---
 
 ## 6. Modding Framework
@@ -863,27 +1278,53 @@ Flexbox layout, widgets (box/text/image/button/slider/grid/scroll), screen manag
 ### Stage 9: Gameplay Systems ✓
 GameMode/PhysicsPresets, GridMovement, CameraController, InputActions, Pathfinding, StateMachine, DialogueSystem, TileLayers. Full Lua bindings for all gameplay APIs.
 
-### Stage 10: World Generation
-WorldGen API, terrain generators, biome system, cave generation, ore distribution, structure placement.
+### Stage 10: Sprite Animation & Collision Layers
+The two most critical gaps before any game feels playable.
 
-### Stage 11: Gameplay Loop
-Inventory, item pickup/drop, tool use, weapon system, crafting, damage/health/death/respawn.
+- **Sprite Animation System** (§5.9) — AnimationController component, frame-based playback, named clips with loop/once/ping-pong modes, animation events (callbacks on specific frames), direction-aware animation selection, sprite sheet atlas integration.
+- **Collision Layers & Masks** (§5.10) — 16-bit layer/mask bitmasks on every collidable entity, named layer constants, runtime toggling for invincibility frames, Lua API for `collision.set_layer()`, `collision.set_mask()`, `collision.remove_mask()`, `collision.add_mask()`.
 
-### Stage 12: Enemies & AI
-Enemy spawning, AI behavior API, pathfinding integration, drops, despawning.
+### Stage 11: Entity Spawning & Projectiles
+Enable dynamic entity creation — the prerequisite for enemies, items, and projectiles.
 
-### Stage 13: NPCs
-NPC entities, housing, dialogue integration, shops.
+- **Entity Spawning from Lua** (§5.11) — `entity.create()`, `entity.spawn(type, x, y)`, `entity.destroy(id)`, component access from Lua, spatial queries (`entity.find_in_radius()`).
+- **Projectile System** (§5.12) — Projectile component with speed, damage, lifetime, pierce, gravity toggle. Collision filtering via layers. Auto-rotation, on-hit callbacks, auto-despawn. Covers arrows, bullets, bombs, and magic bolts.
 
-### Stage 14: Polish & Release
-Performance, bug fixes, documentation, example mods.
+### Stage 12: World Generation
+WorldGen API, terrain generators, biome system, cave generation, ore distribution, structure placement. Lua-driven so mods define their own world generators.
+
+### Stage 13: Gameplay Loop
+Inventory system, item pickup/drop, tool use (mining, chopping), weapon system (melee swing, ranged aim), crafting with station proximity, health/damage/death/respawn.
+
+### Stage 14: Enemies & AI
+Enemy spawning rules (biome, depth, day/night), AI behavior API integrated with pathfinding and FSM, loot drops on death, despawn rules.
+
+### Stage 15: NPCs
+NPC entities, housing validation, dialogue integration with FSM, shops and trade.
+
+### Stage 16: Scenes, Timers & Save State
+Systems that enable complete game loops.
+
+- **Scene / Level Management** (§5.13) — Named scenes with tile data, entity spawns, transitions (fade, slide), scene stack for overlays, persistent vs scene-local entities.
+- **Timer / Scheduler** (§5.15) — `timer.after()`, `timer.every()`, `timer.cancel()`, entity-scoped timers, pause-aware.
+- **Save / Load for Gameplay State** (§5.16) — Key-value persistence per mod, auto-save with world file, string/number/boolean/table support.
+
+### Stage 17: Particles & Polish
+Visual effects and developer quality-of-life.
+
+- **Particle System** (§5.14) — Data-driven emitters, burst and continuous modes, configurable lifetime/speed/angle/color/size curves, entity-attached or world-position emitters, particle pool.
+- **Tweening / Easing** (§5.17) — Tween any numeric property, standard easing functions, chainable sequences, camera shake helper.
+- **Debug Drawing** (§5.18) — Overlay drawing from Lua (rects, circles, lines, paths, text), world-space and screen-space, globally togglable with F3.
+
+### Stage 18: Polish & Release
+Performance profiling, bug fixes, full API documentation, example mods for each game type (platformer, top-down RPG, flight), Steam Deck testing.
 
 ### Post-MVP Roadmap
 
 | Phase | Focus |
 |-------|-------|
 | **Community Building** | Release, gather feedback, support modders |
-| **Official Game Mods** | Terraria-clone, Pokemon-clone, more |
+| **Official Game Mods** | Terraria-clone, Pokemon-clone, Sopwith-clone |
 | **Multiplayer** | Server architecture, sync, 8-16 players |
 | **Steam Release** | Store page, achievements, workshop |
 
@@ -898,8 +1339,13 @@ Each stage must include documentation before it's considered complete.
 | Mod Loader | Mod structure guide, mod.json reference |
 | Content Registry | JSON schemas for all content types |
 | Lua Bindings | API reference for each module |
-| Gameplay Systems | GameMode, GridMovement, Camera, InputActions, Pathfinding, FSM, Dialogue |
-| World Gen | World generation tutorial, biome guide |
+| Gameplay Systems (Stage 9) | GameMode, GridMovement, Camera, InputActions, Pathfinding, FSM, Dialogue, TileLayers |
+| Animation & Collision (Stage 10) | Animation clip format, collision layer guide with diagrams |
+| Entity & Projectiles (Stage 11) | Entity creation guide, projectile configuration reference |
+| World Gen (Stage 12) | World generation tutorial, biome guide, noise API reference |
+| Gameplay Loop (Stage 13) | Inventory API, crafting system guide, combat reference |
+| Scenes & Timers (Stage 16) | Scene management guide, timer API reference, save system guide |
+| Particles & Polish (Stage 17) | Particle emitter reference, easing function chart, debug draw guide |
 | UI System | UI component reference, styling guide |
 | Every system | Example code, common patterns |
 
