@@ -125,6 +125,25 @@ bool Engine::init(const std::string& configPath) {
                  lightCfg.dayNight.dayDurationSeconds);
     }
 
+    // Initialize audio system (Stage 7)
+    {
+        AudioConfig audioCfg;
+        audioCfg.enabled = m_config.getBool("audio.enabled", true);
+        audioCfg.masterVolume = m_config.getFloat("audio.master_volume", 1.0f);
+        audioCfg.sfxVolume = m_config.getFloat("audio.sfx_volume", 0.8f);
+        audioCfg.musicVolume = m_config.getFloat("audio.music_volume", 0.7f);
+        audioCfg.ambientVolume = m_config.getFloat("audio.ambient_volume", 0.8f);
+        audioCfg.maxConcurrentSounds = m_config.getInt("audio.max_sounds", 32);
+        audioCfg.positionalRange = m_config.getFloat("audio.positional_range", 1000.0f);
+        audioCfg.minCrossfade = m_config.getFloat("audio.min_crossfade", 0.5f);
+
+        m_audioSystem = m_systemScheduler.addSystem<AudioSystem>(
+            SystemPhase::PostUpdate, audioCfg);
+
+        LOG_INFO("Audio system initialized (enabled={}, master={:.0f}%)",
+                 audioCfg.enabled, audioCfg.masterVolume * 100.0f);
+    }
+
     // Initialize mod system
     ModLoaderConfig modConfig;
     modConfig.modsDirectory = m_config.getString("mods.directory", "mods");
@@ -240,7 +259,7 @@ void Engine::render() {
     }
 
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 6: Lighting System", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 7: Audio System", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -290,8 +309,20 @@ void Engine::render() {
         m_renderer->drawText(lightText, {20, 170}, 16, Color(255, 220, 100, 255));
     }
 
+    // Audio info
+    if (m_audioSystem) {
+        auto aStats = m_audioSystem->getStats();
+        std::string audioText = "Audio: ";
+        audioText += aStats.deviceInitialized ? "ready" : "no device";
+        audioText += " | " + std::to_string(aStats.registeredSounds) + " sounds registered";
+        audioText += " | " + std::to_string(aStats.activeSounds) + " playing";
+        audioText += " | Music: ";
+        audioText += aStats.musicPlaying ? aStats.currentMusic : "none";
+        m_renderer->drawText(audioText.c_str(), {20, 200}, 16, Color(150, 255, 150, 255));
+    }
+
     m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F11: Fullscreen",
-                         {20, 200}, 16, Color::Gray());
+                         {20, 230}, 16, Color::Gray());
 
     m_renderer->endFrame();
 }

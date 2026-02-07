@@ -9,5 +9,15 @@
     "logging": {
         "level": "debug",
         "file": "gloaming.log"
+    },
+    "audio": {
+        "enabled": true,
+        "master_volume": 1.0,
+        "sfx_volume": 0.8,
+        "music_volume": 0.7,
+        "ambient_volume": 0.8,
+        "max_sounds": 32,
+        "positional_range": 1000.0,
+        "min_crossfade": 0.5
     }
 }

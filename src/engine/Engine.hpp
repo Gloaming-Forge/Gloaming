@@ -15,6 +15,7 @@
 #include "ecs/EntityFactory.hpp"
 #include "world/TileMap.hpp"
 #include "lighting/LightingSystem.hpp"
+#include "audio/AudioSystem.hpp"
 #include "mod/ModLoader.hpp"
 
 #include <string>
@@ -52,6 +53,9 @@ public:
     // Lighting accessors
     LightingSystem* getLightingSystem() { return m_lightingSystem; }
 
+    // Audio accessors
+    AudioSystem* getAudioSystem() { return m_audioSystem; }
+
     // Mod system accessors
     ModLoader& getModLoader() { return m_modLoader; }
     ContentRegistry& getContentRegistry() { return m_modLoader.getContentRegistry(); }
@@ -85,6 +89,9 @@ private:
 
     // Lighting system (managed by SystemScheduler, raw pointer for access)
     LightingSystem* m_lightingSystem = nullptr;
+
+    // Audio system (managed by SystemScheduler, raw pointer for access)
+    AudioSystem* m_audioSystem = nullptr;
 
     // Mod system
     ModLoader m_modLoader;
