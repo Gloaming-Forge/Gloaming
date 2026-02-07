@@ -256,13 +256,13 @@ void Engine::update(double dt) {
     m_dialogueSystem.update(dtFloat, m_input);
 
     // Handle camera controls for testing (Stage 1 demo)
-    // Only active when no mods have set up a CameraController (i.e., no camera target entities)
-    // and when UI/dialogue are not blocking input.
+    // Only active when no mod has assigned a CameraTarget to any entity.
+    // The CameraControllerSystem is always registered, but it does nothing without
+    // a target entity — so we check entity count, not system existence.
     {
-        auto* camCtrl = m_systemScheduler.getSystem<CameraControllerSystem>();
-        bool modCameraActive = (camCtrl && camCtrl->getConfig().mode != CameraMode::Locked);
+        bool hasCameraTarget = (m_registry.count<CameraTarget>() > 0);
 
-        if (!modCameraActive && !m_uiSystem.isBlockingInput() && !m_dialogueSystem.isBlocking()) {
+        if (!hasCameraTarget && !m_uiSystem.isBlockingInput() && !m_dialogueSystem.isBlocking()) {
             float cameraSpeed = 300.0f * dtFloat;
             if (m_input.isKeyDown(KEY_W) || m_input.isKeyDown(KEY_UP)) {
                 m_camera.move(0, -cameraSpeed);

@@ -59,34 +59,12 @@ struct PhysicsPresets {
     }
 };
 
-/// High-level game mode configuration that mods set to declare their game type.
-/// The engine uses this to configure defaults for physics, camera, and input.
+/// Game mode configuration — declares the game's view perspective.
+/// Mods set this via game_mode.set_view() so other systems (and other mods)
+/// can query the intended game style. Physics, camera, and input are configured
+/// through their own dedicated APIs rather than through this struct.
 struct GameModeConfig {
     ViewMode viewMode = ViewMode::SideView;
-
-    // Physics override — if set, overrides the preset derived from viewMode
-    bool useCustomPhysics = false;
-    PhysicsConfig customPhysics;
-
-    // Grid movement settings (relevant for TopDown mode)
-    bool enableGridMovement = false;
-    int gridSize = 16;              // Grid cell size in pixels
-    float gridMoveSpeed = 4.0f;     // Tiles per second
-
-    // Camera defaults
-    bool cameraFollowPlayer = true;
-    float cameraSmoothness = 5.0f;
-
-    /// Get the appropriate physics config for this game mode
-    PhysicsConfig getPhysicsConfig() const {
-        if (useCustomPhysics) return customPhysics;
-        switch (viewMode) {
-            case ViewMode::SideView: return PhysicsPresets::Platformer();
-            case ViewMode::TopDown:  return PhysicsPresets::TopDown();
-            case ViewMode::Custom:   return PhysicsConfig{};
-        }
-        return PhysicsConfig{};
-    }
 };
 
 } // namespace gloaming

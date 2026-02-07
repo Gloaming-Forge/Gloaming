@@ -28,9 +28,12 @@ struct GridMovement {
     float moveSpeed = 4.0f;            // Grid cells per second
     FacingDirection facing = FacingDirection::Down;
 
-    // Authoritative position in tile coordinates (prevents floating-point drift)
+    // Authoritative position in tile coordinates (prevents floating-point drift).
+    // Must be initialized via snapToGrid() before first use — the system auto-initializes
+    // from Transform on the first update if tileInitialized is false.
     int tileX = 0;
     int tileY = 0;
+    bool tileInitialized = false;
 
     // Movement state (managed by system)
     bool isMoving = false;
@@ -51,6 +54,7 @@ struct GridMovement {
         float gs = static_cast<float>(gridSize);
         tileX = static_cast<int>(std::round(pos.x / gs));
         tileY = static_cast<int>(std::round(pos.y / gs));
+        tileInitialized = true;
         return tileToWorldPos();
     }
 
@@ -99,6 +103,12 @@ public:
     void update(float dt) override {
         getRegistry().each<Transform, GridMovement>(
             [dt, this](Entity /*entity*/, Transform& transform, GridMovement& grid) {
+                // Auto-initialize tile coords from Transform on first update
+                if (!grid.tileInitialized) {
+                    grid.snapToGrid(transform.position);
+                    transform.position = grid.tileToWorldPos();
+                }
+
                 if (grid.isMoving) {
                     // Advance movement progress
                     float moveDuration = 1.0f / grid.moveSpeed;

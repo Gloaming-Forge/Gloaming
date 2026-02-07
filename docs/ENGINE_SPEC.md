@@ -728,9 +728,8 @@ collision.set_mask(player, { "tile", "enemy", "npc", "item", "trigger" })
 
 -- During invincibility frames, stop colliding with enemies
 collision.remove_mask(player, "enemy")
-timer.after(1.5, function()
-    collision.add_mask(player, "enemy")
-end)
+-- Re-enable after invincibility ends (tracked by game logic)
+-- collision.add_mask(player, "enemy")
 
 -- Player projectile only hits enemies and tiles
 collision.set_layer(arrow, "projectile")
@@ -850,10 +849,32 @@ For room-based or level-based games where discrete areas are loaded independentl
 - Scene-local entities that are destroyed on exit
 - Entry/exit callbacks for setup and teardown
 
+**Tile data model:**
+
+Scenes and the infinite world are mutually exclusive approaches:
+
+| Approach | Tile Data | Use Case |
+|----------|-----------|----------|
+| **Infinite world** (default) | Single TileMap with chunk streaming | Terraria, open sandbox |
+| **Scene-based** | Each scene has its own fixed-size tile grid loaded from a binary file | Pokemon, Metroidvania |
+
+When `scene.go_to()` is called:
+1. The current scene's tile data is unloaded (chunk manager is cleared)
+2. Scene-local entities are destroyed
+3. The transition effect plays (fade, slide, etc.)
+4. The new scene's tile data is loaded into the TileMap as a single pre-built chunk
+5. `on_enter` is called — the mod spawns entities for the new scene
+6. Camera is repositioned per the scene's camera config
+
+Persistent entities (marked with `scene.set_persistent()`) are not destroyed during step 2 and carry over into the new scene. The player entity is typically persistent.
+
+Scene tile files are pre-built binary chunks (same format as world save chunks) created by a level editor or export tool. Scenes do not use procedural world generation.
+
 ```lua
 -- Define scenes
 scene.register("overworld", {
     tiles = "data/overworld_tiles.bin",
+    size = { width = 40, height = 30 },     -- tile dimensions
     on_enter = function()
         music.play("overworld_theme")
         spawn_overworld_npcs()
@@ -865,6 +886,7 @@ scene.register("overworld", {
 
 scene.register("house_1", {
     tiles = "data/house1_tiles.bin",
+    size = { width = 20, height = 15 },
     camera = { mode = "locked", x = 160, y = 120 },
     on_enter = function()
         music.play("indoor_theme")
@@ -878,9 +900,12 @@ scene.go_to("house_1", { transition = "fade", duration = 0.5 })
 -- Mark the player entity as persistent (survives scene transitions)
 scene.set_persistent(player)
 
--- Scene stack for overlays
-scene.push("pause_menu")   -- pauses game, shows menu
-scene.pop()                 -- resumes game
+-- Scene stack for overlays (does NOT unload tile data)
+scene.push("pause_menu")   -- pauses game, shows menu on top
+scene.pop()                 -- resumes game, removes overlay
+
+-- Query current scene
+local name = scene.current()  -- "overworld"
 ```
 
 ### 5.14 Particle System
@@ -981,6 +1006,18 @@ Key-value persistence for mod-specific data — quest progress, player stats, NP
 - Per-mod namespacing (mods can't overwrite each other's data)
 - Bulk save/load for efficiency
 
+**Storage details:**
+
+| Aspect | Design |
+|--------|--------|
+| **File format** | One JSON file per mod: `worlds/<world>/moddata/<mod-id>.json` |
+| **Namespacing** | Each mod reads/writes only its own file. `save.set("key", val)` in mod `base-game` writes to `moddata/base-game.json` |
+| **Value types** | string, number, boolean, table (nested tables up to 8 levels deep) |
+| **Size limit** | 1 MB per mod save file. `save.set()` returns false if the limit would be exceeded |
+| **Save timing** | Flushed to disk on world save (manual or auto-save). In-memory until then |
+| **Corruption** | Engine keeps a `.bak` copy of the previous save. On load, if the primary file fails JSON parsing, the backup is used and a warning is logged |
+| **Missing data** | `save.get("key", default)` returns the default if the key doesn't exist or the file is missing. Mods should always provide sensible defaults |
+
 ```lua
 -- Track quest progress
 save.set("quest_1_complete", true)
@@ -997,6 +1034,9 @@ save.set("inventory", {
     { id = "torch", count = 15, slot = 2 }
 })
 local inv = save.get("inventory", {})
+
+-- Delete a key
+save.delete("temporary_flag")
 ```
 
 ### 5.17 Tweening / Easing

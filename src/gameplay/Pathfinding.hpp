@@ -58,11 +58,12 @@ public:
     void setMaxNodes(int max) { m_maxNodes = max; }
     int getMaxNodes() const { return m_maxNodes; }
 
-    /// Find a path from start to goal using A*.
-    /// @param start Starting tile position
-    /// @param goal  Target tile position
-    /// @param isWalkable Callback that returns true if a tile is passable
-    /// @param tileCost Optional callback for weighted tiles (default: all cost 1.0)
+    /// Find a path from start to goal using A* (convenience overload).
+    /// Uses the instance's m_allowDiagonals and m_maxNodes settings.
+    /// Note: This reads shared config. If Lua code has called setMaxNodes() or
+    /// setAllowDiagonals(), those values will be used. For concurrent-safe calls
+    /// from Lua, use the explicit-params overload instead.
+    /// @param tileCost Optional weighted tile cost callback (not yet exposed to Lua).
     PathResult findPath(TilePos start, TilePos goal,
                         const WalkableFunc& isWalkable,
                         const TileCostFunc& tileCost = nullptr) const {
@@ -71,6 +72,8 @@ public:
 
     /// Find a path with explicit settings (thread-safe — no shared state mutation).
     /// Prefer this overload when calling from Lua callbacks that may run concurrently.
+    /// @param tileCost Optional weighted tile cost callback. TODO: Expose to Lua API
+    ///        so modders can implement "prefer roads over grass" or "avoid water".
     PathResult findPath(TilePos start, TilePos goal,
                         const WalkableFunc& isWalkable,
                         bool allowDiagonals, int maxNodes,
