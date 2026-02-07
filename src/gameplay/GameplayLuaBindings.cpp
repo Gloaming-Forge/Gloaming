@@ -48,7 +48,8 @@ static Key parseKey(const std::string& name) {
     if (name == "rshift")     return Key::RightShift;
     if (name == "lctrl")      return Key::LeftControl;
     if (name == "rctrl")      return Key::RightControl;
-    return Key::Space;  // fallback
+    LOG_WARN("parseKey: unrecognized key name '{}', defaulting to Space", name);
+    return Key::Space;
 }
 
 void bindGameplayAPI(sol::state& lua, Engine& engine,
@@ -63,10 +64,21 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
     auto gameMode = lua.create_named_table("game_mode");
 
     gameMode["set_view"] = [&engine](const std::string& mode) {
-        // This is informational — mods declare their view mode so other systems
-        // can adapt. The actual physics/camera changes happen through the
-        // respective APIs.
-        LOG_INFO("Game mode set to: {}", mode);
+        auto& gmc = engine.getGameModeConfig();
+        if (mode == "side_view" || mode == "sideview")      gmc.viewMode = ViewMode::SideView;
+        else if (mode == "top_down" || mode == "topdown")   gmc.viewMode = ViewMode::TopDown;
+        else if (mode == "custom")                          gmc.viewMode = ViewMode::Custom;
+        else LOG_WARN("game_mode.set_view: unknown mode '{}' (use side_view, top_down, custom)", mode);
+        LOG_INFO("Game view mode set to: {}", mode);
+    };
+
+    gameMode["get_view"] = [&engine]() -> std::string {
+        switch (engine.getGameModeConfig().viewMode) {
+            case ViewMode::SideView: return "side_view";
+            case ViewMode::TopDown:  return "top_down";
+            case ViewMode::Custom:   return "custom";
+        }
+        return "side_view";
     };
 
     gameMode["set_physics"] = [&engine](const std::string& preset) {
@@ -118,6 +130,21 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         return actions.isActionReleased(name, engine.getInput());
     };
 
+    inputApi["get_bindings"] = [&actions, &engine](const std::string& name) -> sol::object {
+        const auto& bindings = actions.getBindings(name);
+        if (bindings.empty()) return sol::nil;
+        sol::state_view luaView = engine.getModLoader().getLuaBindings().getState();
+        sol::table result = luaView.create_table();
+        for (size_t i = 0; i < bindings.size(); ++i) {
+            result[i + 1] = static_cast<int>(bindings[i].key);
+        }
+        return result;
+    };
+
+    inputApi["clear_all"] = [&actions]() {
+        actions.clearAll();
+    };
+
     inputApi["register_platformer_defaults"] = [&actions]() {
         actions.registerPlatformerDefaults();
     };
@@ -146,12 +173,12 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
             gm.moveSpeed = opts->get_or("move_speed", 4.0f);
         }
 
-        // Set up walkability check using the tile map
-        TileMap& tileMap = engine.getTileMap();
-        gm.isWalkable = [&tileMap](int tileX, int tileY) -> bool {
-            Tile tile = tileMap.getTile(tileX, tileY);
-            return !tile.isSolid();
-        };
+        // Initialize tile coords from current transform position
+        if (registry.has<Transform>(entity)) {
+            auto& transform = registry.get<Transform>(entity);
+            gm.snapToGrid(transform.position);
+            transform.position = gm.tileToWorldPos();
+        }
 
         registry.add<GridMovement>(entity, std::move(gm));
     };
@@ -162,9 +189,12 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         if (!registry.valid(entity) || !registry.has<Transform>(entity) ||
             !registry.has<GridMovement>(entity)) return false;
 
+        auto* gridSystem = engine.getSystemScheduler().getSystem<GridMovementSystem>();
+        if (!gridSystem) return false;
+
         auto& transform = registry.get<Transform>(entity);
         auto& grid = registry.get<GridMovement>(entity);
-        return GridMovementSystem::requestMove(transform, grid, parseFacing(direction));
+        return gridSystem->requestMove(transform, grid, parseFacing(direction));
     };
 
     gridApi["is_moving"] = [&engine](uint32_t entityId) -> bool {
@@ -283,16 +313,16 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
             maxNodes = opts->get_or("max_nodes", 5000);
             diagonals = opts->get_or("diagonals", false);
         }
-        pathfinder.setMaxNodes(maxNodes);
-        pathfinder.setAllowDiagonals(diagonals);
 
         TileMap& tileMap = engine.getTileMap();
+        // Use the explicit-params overload to avoid mutating shared Pathfinder state
         auto result = pathfinder.findPath(
             {startX, startY}, {goalX, goalY},
             [&tileMap](int x, int y) -> bool {
                 Tile tile = tileMap.getTile(x, y);
                 return !tile.isSolid();
-            }
+            },
+            diagonals, maxNodes
         );
 
         if (!result.found) return sol::nil;

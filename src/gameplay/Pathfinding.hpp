@@ -66,6 +66,15 @@ public:
     PathResult findPath(TilePos start, TilePos goal,
                         const WalkableFunc& isWalkable,
                         const TileCostFunc& tileCost = nullptr) const {
+        return findPath(start, goal, isWalkable, m_allowDiagonals, m_maxNodes, tileCost);
+    }
+
+    /// Find a path with explicit settings (thread-safe — no shared state mutation).
+    /// Prefer this overload when calling from Lua callbacks that may run concurrently.
+    PathResult findPath(TilePos start, TilePos goal,
+                        const WalkableFunc& isWalkable,
+                        bool allowDiagonals, int maxNodes,
+                        const TileCostFunc& tileCost = nullptr) const {
         PathResult result;
 
         if (start == goal) {
@@ -91,7 +100,7 @@ public:
         std::unordered_set<TilePos, TilePosHash> closedSet;
 
         gScore[start] = 0.0f;
-        openSet.push({start, heuristic(start, goal)});
+        openSet.push({start, heuristic(start, goal, allowDiagonals)});
 
         // Direction offsets: 4-directional
         static const int dx4[] = {0, 1, 0, -1};
@@ -101,9 +110,9 @@ public:
         static const int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
         static const int dy8[] = {-1, -1, 0, 1, 1, 1, 0, -1};
 
-        const int* dx = m_allowDiagonals ? dx8 : dx4;
-        const int* dy = m_allowDiagonals ? dy8 : dy4;
-        int dirCount = m_allowDiagonals ? 8 : 4;
+        const int* dx = allowDiagonals ? dx8 : dx4;
+        const int* dy = allowDiagonals ? dy8 : dy4;
+        int dirCount = allowDiagonals ? 8 : 4;
 
         while (!openSet.empty()) {
             Node current = openSet.top();
@@ -119,7 +128,7 @@ public:
             if (closedSet.count(current.pos)) continue;
             closedSet.insert(current.pos);
 
-            if (m_maxNodes > 0 && static_cast<int>(closedSet.size()) > m_maxNodes) {
+            if (maxNodes > 0 && static_cast<int>(closedSet.size()) > maxNodes) {
                 break;  // Exceeded search budget
             }
 
@@ -131,13 +140,13 @@ public:
 
                 // For diagonal movement, check that both adjacent cardinal tiles are walkable
                 // (prevents cutting corners through walls)
-                if (m_allowDiagonals && i >= 4) {
+                if (allowDiagonals && i >= 4) {
                     bool cardinalXWalkable = isWalkable(current.pos.x + dx[i], current.pos.y);
                     bool cardinalYWalkable = isWalkable(current.pos.x, current.pos.y + dy[i]);
                     if (!cardinalXWalkable || !cardinalYWalkable) continue;
                 }
 
-                float moveCost = (m_allowDiagonals && i >= 4) ? 1.414f : 1.0f;
+                float moveCost = (allowDiagonals && i >= 4) ? 1.414f : 1.0f;
                 if (tileCost) {
                     moveCost *= tileCost(neighbor.x, neighbor.y);
                 }
@@ -149,7 +158,7 @@ public:
 
                 cameFrom[neighbor] = current.pos;
                 gScore[neighbor] = tentativeG;
-                float f = tentativeG + heuristic(neighbor, goal);
+                float f = tentativeG + heuristic(neighbor, goal, allowDiagonals);
                 openSet.push({neighbor, f});
             }
         }
@@ -196,8 +205,8 @@ public:
     }
 
 private:
-    float heuristic(TilePos a, TilePos b) const {
-        if (m_allowDiagonals) {
+    float heuristic(TilePos a, TilePos b, bool allowDiag) const {
+        if (allowDiag) {
             // Octile distance (diagonal heuristic)
             float dx = static_cast<float>(std::abs(a.x - b.x));
             float dy = static_cast<float>(std::abs(a.y - b.y));

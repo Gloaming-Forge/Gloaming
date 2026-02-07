@@ -31,6 +31,7 @@ Each game is a mod. The engine provides the systems, the mod provides the rules 
 | **Scripting** | Lua 5.4 (sol2 bindings) |
 | **Data Format** | JSON + binary |
 | **Audio** | miniaudio (via Raylib) |
+| **Networking** | ENet (future) |
 
 ## Architecture
 
@@ -159,6 +160,7 @@ See the [Engine Spec](docs/ENGINE_SPEC.md) for full API documentation.
 
 - **Primary:** Windows (64-bit)
 - **Secondary:** Linux, macOS
+- **Stretch:** Steam Deck verified
 
 ## Contributing
 

@@ -2,6 +2,7 @@
 
 #include "rendering/IRenderer.hpp"
 #include "engine/Input.hpp"
+#include "gameplay/InputActions.hpp"
 
 #include <string>
 #include <vector>
@@ -72,15 +73,21 @@ public:
     void setConfig(const DialogueBoxConfig& config) { m_config = config; }
     DialogueBoxConfig& getConfig() { return m_config; }
 
+    /// Set the input action map for respecting mod key rebindings.
+    /// If set, choice navigation uses "move_up"/"move_down"/"interact"/"cancel" actions
+    /// instead of hard-coded keys.
+    void setInputActions(InputActionMap* actions) { m_inputActions = actions; }
+
     /// Start a dialogue sequence. Adds all nodes and begins at the first one.
     void startDialogue(std::vector<DialogueNode> nodes) {
         m_nodes.clear();
+        if (nodes.empty()) return;
+        // Capture the first node's ID before moving, to avoid reading moved-from state
+        std::string firstId = nodes.front().id;
         for (auto& node : nodes) {
             m_nodes[node.id] = std::move(node);
         }
-        if (!nodes.empty()) {
-            showNode(nodes.front().id);
-        }
+        showNode(firstId);
         m_active = true;
     }
 
@@ -143,8 +150,12 @@ public:
             m_displayedChars = static_cast<int>(node.text.size());
         }
 
-        // Handle input
-        if (input.isKeyPressed(m_config.advanceKey)) {
+        // Handle input — use InputActions if available, raw keys as fallback
+        bool advancePressed = m_inputActions
+            ? m_inputActions->isActionPressed("interact", input)
+            : input.isKeyPressed(m_config.advanceKey);
+
+        if (advancePressed) {
             if (m_displayedChars < static_cast<int>(node.text.size())) {
                 // Skip typewriter — show all text
                 m_displayedChars = static_cast<int>(node.text.size());
@@ -166,13 +177,20 @@ public:
             }
         }
 
-        // Navigate choices
+        // Navigate choices — use InputActions if available, raw keys as fallback
         if (!node.choices.empty() && m_displayedChars >= static_cast<int>(node.text.size())) {
-            if (input.isKeyPressed(Key::Up) || input.isKeyPressed(Key::W)) {
+            bool navUp = m_inputActions
+                ? m_inputActions->isActionPressed("move_up", input)
+                : (input.isKeyPressed(Key::Up) || input.isKeyPressed(Key::W));
+            bool navDown = m_inputActions
+                ? m_inputActions->isActionPressed("move_down", input)
+                : (input.isKeyPressed(Key::Down) || input.isKeyPressed(Key::S));
+
+            if (navUp) {
                 m_selectedChoice = (m_selectedChoice > 0) ? m_selectedChoice - 1
                                    : static_cast<int>(node.choices.size()) - 1;
             }
-            if (input.isKeyPressed(Key::Down) || input.isKeyPressed(Key::S)) {
+            if (navDown) {
                 m_selectedChoice = (m_selectedChoice + 1) % static_cast<int>(node.choices.size());
             }
         }
@@ -208,7 +226,9 @@ public:
 
         // Account for portrait
         if (!node.portraitId.empty()) {
-            // Draw portrait placeholder (actual texture would need TextureManager integration)
+            // TODO: Portrait rendering is a stub — draws an outline rectangle as a placeholder.
+            // Actual texture rendering requires TextureManager integration (planned).
+            // The Lua API accepts a "portrait" field for forward compatibility.
             Rect portraitRect{
                 boxX + m_config.padding,
                 boxY + m_config.padding,
@@ -313,6 +333,7 @@ private:
     }
 
     DialogueBoxConfig m_config;
+    InputActionMap* m_inputActions = nullptr;  // Optional: respects mod key rebindings
     std::unordered_map<std::string, DialogueNode> m_nodes;
     std::string m_currentNodeId;
     int m_displayedChars = 0;

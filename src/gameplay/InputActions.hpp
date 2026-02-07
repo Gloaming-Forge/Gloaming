@@ -79,7 +79,7 @@ public:
         auto it = m_actions.find(name);
         if (it == m_actions.end()) return false;
         for (const auto& binding : it->second) {
-            if (input.isKeyReleased(binding.key)) {
+            if (checkModifiers(binding, input) && input.isKeyReleased(binding.key)) {
                 return true;
             }
         }
@@ -91,6 +91,14 @@ public:
         return m_actions.count(name) > 0;
     }
 
+    /// Get the bindings for an action (useful for UI prompts like "Press [Z] to interact")
+    const std::vector<InputBinding>& getBindings(const std::string& name) const {
+        static const std::vector<InputBinding> empty;
+        auto it = m_actions.find(name);
+        if (it == m_actions.end()) return empty;
+        return it->second;
+    }
+
     /// Get all registered action names
     std::vector<std::string> getActionNames() const {
         std::vector<std::string> names;
@@ -99,6 +107,11 @@ public:
             names.push_back(name);
         }
         return names;
+    }
+
+    /// Clear all registered actions and bindings
+    void clearAll() {
+        m_actions.clear();
     }
 
     /// Register common presets for different game types

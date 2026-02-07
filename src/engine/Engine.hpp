@@ -18,6 +18,7 @@
 #include "audio/AudioSystem.hpp"
 #include "ui/UISystem.hpp"
 #include "mod/ModLoader.hpp"
+#include "gameplay/GameMode.hpp"
 #include "gameplay/InputActions.hpp"
 #include "gameplay/Pathfinding.hpp"
 #include "gameplay/DialogueSystem.hpp"
@@ -70,6 +71,7 @@ public:
     EventBus& getEventBus() { return m_modLoader.getEventBus(); }
 
     // Gameplay system accessors
+    GameModeConfig& getGameModeConfig() { return m_gameModeConfig; }
     InputActionMap& getInputActions() { return m_inputActions; }
     Pathfinder& getPathfinder() { return m_pathfinder; }
     DialogueSystem& getDialogueSystem() { return m_dialogueSystem; }
@@ -114,6 +116,7 @@ private:
     ModLoader m_modLoader;
 
     // Gameplay systems (Stage 9+)
+    GameModeConfig m_gameModeConfig;
     InputActionMap m_inputActions;
     Pathfinder m_pathfinder;
     DialogueSystem m_dialogueSystem;

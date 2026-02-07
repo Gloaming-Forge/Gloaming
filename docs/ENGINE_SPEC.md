@@ -172,10 +172,7 @@ gloaming/
 ├── LICENSE
 ├── docs/
 │   ├── ENGINE_SPEC.md              # This document
-│   ├── GAME_TERRARIA_SPEC.md       # Terraria-clone game design
-│   ├── modding-guide/
-│   ├── api-reference/
-│   └── tutorials/
+│   └── GAME_TERRARIA_SPEC.md       # Terraria-clone game design
 ├── src/
 │   ├── main.cpp
 │   ├── engine/                 # Core engine (hardcoded)

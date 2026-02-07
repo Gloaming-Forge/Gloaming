@@ -155,7 +155,12 @@ bool Engine::init(const std::string& configPath) {
     // Initialize gameplay systems (Stage 9+)
     {
         // Grid movement system (for Pokemon-style games)
-        m_systemScheduler.addSystem<GridMovementSystem>(SystemPhase::PreUpdate);
+        auto* gridSys = m_systemScheduler.addSystem<GridMovementSystem>(SystemPhase::PreUpdate);
+        // Set default walkability callback using the tile map
+        gridSys->setWalkabilityCallback([this](int tileX, int tileY) -> bool {
+            Tile tile = m_tileMap.getTile(tileX, tileY);
+            return !tile.isSolid();
+        });
 
         // State machine system (for entity AI)
         m_systemScheduler.addSystem<StateMachineSystem>(SystemPhase::Update);
@@ -163,7 +168,11 @@ bool Engine::init(const std::string& configPath) {
         // Camera controller system
         m_systemScheduler.addSystem<CameraControllerSystem>(SystemPhase::PostUpdate);
 
-        // Initialize tile layer manager
+        // Wire dialogue system to use InputActions for key rebinding support
+        m_dialogueSystem.setInputActions(&m_inputActions);
+
+        // Initialize tile layer manager — deferred: tile size will be read lazily
+        // from the renderer when tiles are registered. For now, use the renderer default.
         m_tileLayers.setTileSize(m_tileRenderer.getTileSize());
 
         LOG_INFO("Gameplay systems initialized (grid movement, state machine, camera controller, "
@@ -247,29 +256,35 @@ void Engine::update(double dt) {
     m_dialogueSystem.update(dtFloat, m_input);
 
     // Handle camera controls for testing (Stage 1 demo)
-    // Skip if UI is consuming input or dialogue is active
-    if (!m_uiSystem.isBlockingInput() && !m_dialogueSystem.isBlocking()) {
-        float cameraSpeed = 300.0f * dtFloat;
-        if (m_input.isKeyDown(KEY_W) || m_input.isKeyDown(KEY_UP)) {
-            m_camera.move(0, -cameraSpeed);
-        }
-        if (m_input.isKeyDown(KEY_S) || m_input.isKeyDown(KEY_DOWN)) {
-            m_camera.move(0, cameraSpeed);
-        }
-        if (m_input.isKeyDown(KEY_A) || m_input.isKeyDown(KEY_LEFT)) {
-            m_camera.move(-cameraSpeed, 0);
-        }
-        if (m_input.isKeyDown(KEY_D) || m_input.isKeyDown(KEY_RIGHT)) {
-            m_camera.move(cameraSpeed, 0);
-        }
+    // Only active when no mods have set up a CameraController (i.e., no camera target entities)
+    // and when UI/dialogue are not blocking input.
+    {
+        auto* camCtrl = m_systemScheduler.getSystem<CameraControllerSystem>();
+        bool modCameraActive = (camCtrl && camCtrl->getConfig().mode != CameraMode::Locked);
 
-        // Zoom controls
-        float zoomSpeed = 1.0f * dtFloat;
-        if (m_input.isKeyDown(KEY_Q)) {
-            m_camera.zoom(-zoomSpeed);
-        }
-        if (m_input.isKeyDown(KEY_E)) {
-            m_camera.zoom(zoomSpeed);
+        if (!modCameraActive && !m_uiSystem.isBlockingInput() && !m_dialogueSystem.isBlocking()) {
+            float cameraSpeed = 300.0f * dtFloat;
+            if (m_input.isKeyDown(KEY_W) || m_input.isKeyDown(KEY_UP)) {
+                m_camera.move(0, -cameraSpeed);
+            }
+            if (m_input.isKeyDown(KEY_S) || m_input.isKeyDown(KEY_DOWN)) {
+                m_camera.move(0, cameraSpeed);
+            }
+            if (m_input.isKeyDown(KEY_A) || m_input.isKeyDown(KEY_LEFT)) {
+                m_camera.move(-cameraSpeed, 0);
+            }
+            if (m_input.isKeyDown(KEY_D) || m_input.isKeyDown(KEY_RIGHT)) {
+                m_camera.move(cameraSpeed, 0);
+            }
+
+            // Zoom controls
+            float zoomSpeed = 1.0f * dtFloat;
+            if (m_input.isKeyDown(KEY_Q)) {
+                m_camera.zoom(-zoomSpeed);
+            }
+            if (m_input.isKeyDown(KEY_E)) {
+                m_camera.zoom(zoomSpeed);
+            }
         }
     }
 

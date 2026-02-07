@@ -20,6 +20,16 @@ struct StateCallbacks {
 /// A finite state machine component for entity behaviors.
 /// Each entity can have its own independent state machine with named states.
 ///
+/// Note on scaling: This component stores std::function callbacks and a string map,
+/// which makes it heavier than typical ECS components. This is acceptable for
+/// moderate numbers of AI entities (dozens to low hundreds). For games with thousands
+/// of stateful entities, consider a shared FSM definition table that entities
+/// reference by ID instead of storing callbacks per-entity.
+///
+/// Transition guards (e.g., "can only transition from X to Y") are not built in.
+/// Transitions are purely imperative via setState(). Implement guards in your
+/// onUpdate callbacks if needed.
+///
 /// Usage example (from Lua):
 ///   -- Define states for an NPC
 ///   fsm.addState(entity, "idle", { onEnter=..., onUpdate=..., onExit=... })

@@ -15,12 +15,20 @@ enum class CameraMode {
     Locked          // Camera does not move (fixed screen)
 };
 
-/// Axis lock for constraining camera movement
+/// Axis lock for constraining camera movement (bitmask)
 enum class AxisLock : uint8_t {
     None = 0,
     LockX = 1,     // Camera cannot move horizontally (vertical scroller)
     LockY = 2,     // Camera cannot move vertically (horizontal side-scroller)
 };
+
+/// Bitwise operators for AxisLock so bitmask operations are clean
+inline AxisLock operator|(AxisLock a, AxisLock b) {
+    return static_cast<AxisLock>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+}
+inline bool operator&(AxisLock a, AxisLock b) {
+    return (static_cast<uint8_t>(a) & static_cast<uint8_t>(b)) != 0;
+}
 
 /// Camera controller configuration
 struct CameraControllerConfig {
@@ -29,7 +37,7 @@ struct CameraControllerConfig {
     // -- FreeFollow settings --
     float smoothness = 5.0f;            // Lerp speed (higher = snappier)
     Vec2 deadzone{32.0f, 32.0f};        // Pixels of deadzone before camera starts following
-    Vec2 lookAhead{0.0f, 0.0f};         // Offset in the direction the entity faces
+    Vec2 lookAhead{0.0f, 0.0f};         // Look-ahead offset (scaled by target velocity direction)
 
     // -- AutoScroll settings --
     Vec2 scrollSpeed{100.0f, 0.0f};     // Pixels per second (e.g., {100,0} for Sopwith)
@@ -97,30 +105,46 @@ public:
     const CameraControllerConfig& getConfig() const { return m_config; }
 
 private:
-    /// Find the highest-priority camera target entity
-    Vec2 getTargetPosition() {
-        Vec2 best{0, 0};
-        int bestPriority = -9999;
+    /// Find the highest-priority camera target entity and its velocity
+    struct TargetInfo {
+        Vec2 position{0, 0};
+        Vec2 velocity{0, 0};
         bool found = false;
+    };
+
+    TargetInfo getTargetInfo() {
+        TargetInfo info;
+        int bestPriority = -9999;
 
         getRegistry().each<Transform, CameraTarget>(
-            [&](Entity /*entity*/, const Transform& transform, const CameraTarget& target) {
-                if (!found || target.priority > bestPriority) {
-                    best = transform.position + target.offset;
+            [&](Entity entity, const Transform& transform, const CameraTarget& target) {
+                if (!info.found || target.priority > bestPriority) {
+                    info.position = transform.position + target.offset;
+                    // Read velocity for look-ahead if available
+                    if (getRegistry().has<Velocity>(entity)) {
+                        auto& vel = getRegistry().get<Velocity>(entity);
+                        info.velocity = vel.linear;
+                    } else {
+                        info.velocity = {0.0f, 0.0f};
+                    }
                     bestPriority = target.priority;
-                    found = true;
+                    info.found = true;
                 }
             }
         );
 
-        if (!found) return m_camera->getPosition();
-        return best;
+        if (!info.found) info.position = m_camera->getPosition();
+        return info;
+    }
+
+    Vec2 getTargetPosition() {
+        return getTargetInfo().position;
     }
 
     void updateFreeFollow(float dt) {
-        Vec2 target = getTargetPosition();
+        auto targetInfo = getTargetInfo();
         Vec2 current = m_camera->getPosition();
-        Vec2 diff = target - current;
+        Vec2 diff = targetInfo.position - current;
 
         // Apply deadzone
         if (std::abs(diff.x) < m_config.deadzone.x) diff.x = 0.0f;
@@ -130,14 +154,24 @@ private:
         else diff.y -= (diff.y > 0 ? m_config.deadzone.y : -m_config.deadzone.y);
 
         // Apply axis lock
-        if (static_cast<uint8_t>(m_config.axisLock) & static_cast<uint8_t>(AxisLock::LockX)) diff.x = 0.0f;
-        if (static_cast<uint8_t>(m_config.axisLock) & static_cast<uint8_t>(AxisLock::LockY)) diff.y = 0.0f;
+        if (m_config.axisLock & AxisLock::LockX) diff.x = 0.0f;
+        if (m_config.axisLock & AxisLock::LockY) diff.y = 0.0f;
 
         // Smooth follow
         Vec2 newPos = current + diff * (m_config.smoothness * dt);
 
-        // Look-ahead offset
-        newPos = newPos + m_config.lookAhead;
+        // Look-ahead: apply offset in the direction the entity is moving
+        if (m_config.lookAhead.x != 0.0f || m_config.lookAhead.y != 0.0f) {
+            // Normalize velocity to get direction, then scale by lookAhead
+            float speed = std::sqrt(targetInfo.velocity.x * targetInfo.velocity.x
+                                  + targetInfo.velocity.y * targetInfo.velocity.y);
+            if (speed > 1.0f) {
+                float dirX = targetInfo.velocity.x / speed;
+                float dirY = targetInfo.velocity.y / speed;
+                newPos.x += dirX * m_config.lookAhead.x;
+                newPos.y += dirY * m_config.lookAhead.y;
+            }
+        }
 
         m_camera->setPosition(newPos);
     }
@@ -163,14 +197,11 @@ private:
         Vec2 current = m_camera->getPosition();
         Vec2 newPos = current + m_config.scrollSpeed * dt;
 
-        // Keep the camera target centered vertically (or horizontally)
-        // if there's a target entity
+        // Keep the camera target centered on the non-scrolling axis
         Vec2 target = getTargetPosition();
-        if (static_cast<uint8_t>(m_config.axisLock) & static_cast<uint8_t>(AxisLock::LockY)) {
-            // Auto-scroll horizontal only, follow target on Y
+        if (m_config.axisLock & AxisLock::LockY) {
             newPos.y = target.y;
-        } else if (static_cast<uint8_t>(m_config.axisLock) & static_cast<uint8_t>(AxisLock::LockX)) {
-            // Auto-scroll vertical only, follow target on X
+        } else if (m_config.axisLock & AxisLock::LockX) {
             newPos.x = target.x;
         }
 
@@ -178,7 +209,9 @@ private:
     }
 
     void updateRoomBased(float dt) {
-        // Same as GridSnap but with discrete room boundaries
+        // TODO: Currently identical to GridSnap. Future: add room-transition
+        // animations (slide/fade) and discrete boundary detection instead of
+        // continuous room-center snapping.
         updateGridSnap(dt);
     }
 

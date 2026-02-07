@@ -51,6 +51,11 @@ struct TileLayerData {
 /// This sits alongside the existing Chunk/TileMap system without modifying it.
 /// The existing TileMap remains the "Ground" layer; this class adds optional
 /// Background, Decoration, and Foreground layers.
+///
+/// LIMITATION: Extra tile layers are NOT serialized. They exist only in memory
+/// for the current session. If a mod places decoration or foreground tiles, those
+/// tiles will be lost when the world is saved and reloaded. Serialization support
+/// for extra layers is planned alongside the WorldFile system.
 class TileLayerManager {
 public:
     using GetTileFunc = std::function<Tile(int worldX, int worldY, int layer)>;
