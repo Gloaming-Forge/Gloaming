@@ -21,6 +21,7 @@ add_executable(gloaming_tests
     test_mod.cpp
     test_lighting.cpp
     test_audio.cpp
+    test_ui.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

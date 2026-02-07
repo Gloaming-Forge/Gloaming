@@ -4,6 +4,8 @@
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
 #include "audio/AudioSystem.hpp"
+#include "ui/UISystem.hpp"
+#include "ui/UIWidgets.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -58,6 +60,7 @@ bool LuaBindings::init(Engine& engine, ContentRegistry& registry, EventBus& even
     bindEventsAPI();
     bindModsAPI();
     bindAudioAPI();
+    bindUIAPI();
     bindUtilAPI();
 
     m_initialized = true;
@@ -461,6 +464,487 @@ void LuaBindings::bindAudioAPI() {
     audio["getCurrentMusic"] = [this]() -> std::string {
         AudioSystem* audioSys = m_engine->getAudioSystem();
         return audioSys ? audioSys->getCurrentMusic() : "";
+    };
+}
+
+/// Helper: parse a UIStyle from a Lua table
+static UIStyle parseStyle(const sol::table& t) {
+    UIStyle style;
+
+    // Width/height
+    sol::optional<sol::object> wObj = t["width"];
+    if (wObj) {
+        if (wObj->is<float>() || wObj->is<int>()) {
+            style.width = UIDimension::Fixed(wObj->as<float>());
+        } else if (wObj->is<std::string>()) {
+            std::string ws = wObj->as<std::string>();
+            if (ws == "auto") style.width = UIDimension::Auto();
+            else if (ws == "grow") style.width = UIDimension::Grow();
+            else if (ws.back() == '%') {
+                style.width = UIDimension::Percent(std::stof(ws));
+            }
+        }
+    }
+
+    sol::optional<sol::object> hObj = t["height"];
+    if (hObj) {
+        if (hObj->is<float>() || hObj->is<int>()) {
+            style.height = UIDimension::Fixed(hObj->as<float>());
+        } else if (hObj->is<std::string>()) {
+            std::string hs = hObj->as<std::string>();
+            if (hs == "auto") style.height = UIDimension::Auto();
+            else if (hs == "grow") style.height = UIDimension::Grow();
+            else if (hs.back() == '%') {
+                style.height = UIDimension::Percent(std::stof(hs));
+            }
+        }
+    }
+
+    style.minWidth = t.get_or("min_width", 0.0f);
+    style.minHeight = t.get_or("min_height", 0.0f);
+    style.maxWidth = t.get_or("max_width", 0.0f);
+    style.maxHeight = t.get_or("max_height", 0.0f);
+
+    // Flex layout
+    sol::optional<std::string> dir = t.get<sol::optional<std::string>>("flex_direction");
+    if (dir) {
+        if (*dir == "row") style.flexDirection = FlexDirection::Row;
+        else if (*dir == "column") style.flexDirection = FlexDirection::Column;
+    }
+
+    sol::optional<std::string> jc = t.get<sol::optional<std::string>>("justify_content");
+    if (jc) {
+        if (*jc == "start") style.justifyContent = JustifyContent::Start;
+        else if (*jc == "center") style.justifyContent = JustifyContent::Center;
+        else if (*jc == "end") style.justifyContent = JustifyContent::End;
+        else if (*jc == "space_between") style.justifyContent = JustifyContent::SpaceBetween;
+        else if (*jc == "space_around") style.justifyContent = JustifyContent::SpaceAround;
+    }
+
+    sol::optional<std::string> ai = t.get<sol::optional<std::string>>("align_items");
+    if (ai) {
+        if (*ai == "start") style.alignItems = AlignItems::Start;
+        else if (*ai == "center") style.alignItems = AlignItems::Center;
+        else if (*ai == "end") style.alignItems = AlignItems::End;
+        else if (*ai == "stretch") style.alignItems = AlignItems::Stretch;
+    }
+
+    style.gap = t.get_or("gap", 0.0f);
+
+    // Padding - can be a number (all sides) or a table
+    sol::optional<sol::object> padObj = t["padding"];
+    if (padObj) {
+        if (padObj->is<float>() || padObj->is<int>()) {
+            style.padding = UIEdges(padObj->as<float>());
+        } else if (padObj->is<sol::table>()) {
+            sol::table p = padObj->as<sol::table>();
+            style.padding.top = p.get_or("top", 0.0f);
+            style.padding.right = p.get_or("right", 0.0f);
+            style.padding.bottom = p.get_or("bottom", 0.0f);
+            style.padding.left = p.get_or("left", 0.0f);
+        }
+    }
+
+    // Margin - same pattern
+    sol::optional<sol::object> marObj = t["margin"];
+    if (marObj) {
+        if (marObj->is<float>() || marObj->is<int>()) {
+            style.margin = UIEdges(marObj->as<float>());
+        } else if (marObj->is<sol::table>()) {
+            sol::table m = marObj->as<sol::table>();
+            style.margin.top = m.get_or("top", 0.0f);
+            style.margin.right = m.get_or("right", 0.0f);
+            style.margin.bottom = m.get_or("bottom", 0.0f);
+            style.margin.left = m.get_or("left", 0.0f);
+        }
+    }
+
+    // Background color as hex string or table {r, g, b, a}
+    sol::optional<sol::object> bgObj = t["background"];
+    if (bgObj) {
+        if (bgObj->is<std::string>()) {
+            std::string hex = bgObj->as<std::string>();
+            if (hex.size() >= 7 && hex[0] == '#') {
+                unsigned int r = std::stoul(hex.substr(1, 2), nullptr, 16);
+                unsigned int g = std::stoul(hex.substr(3, 2), nullptr, 16);
+                unsigned int b = std::stoul(hex.substr(5, 2), nullptr, 16);
+                unsigned int a = (hex.size() >= 9) ? std::stoul(hex.substr(7, 2), nullptr, 16) : 255;
+                style.backgroundColor = Color(r, g, b, a);
+            }
+        } else if (bgObj->is<sol::table>()) {
+            sol::table c = bgObj->as<sol::table>();
+            style.backgroundColor = Color(
+                c.get_or(1, 0),
+                c.get_or(2, 0),
+                c.get_or(3, 0),
+                c.get_or(4, 255)
+            );
+        }
+    }
+
+    // Border
+    sol::optional<sol::table> borderObj = t.get<sol::optional<sol::table>>("border");
+    if (borderObj) {
+        style.border.width = borderObj->get_or("width", 0.0f);
+        sol::optional<std::string> bc = borderObj->get<sol::optional<std::string>>("color");
+        if (bc && bc->size() >= 7 && (*bc)[0] == '#') {
+            unsigned int r = std::stoul(bc->substr(1, 2), nullptr, 16);
+            unsigned int g = std::stoul(bc->substr(3, 2), nullptr, 16);
+            unsigned int b = std::stoul(bc->substr(5, 2), nullptr, 16);
+            style.border.color = Color(r, g, b, 255);
+        }
+    }
+
+    // Text
+    style.fontSize = t.get_or("font_size", 20);
+    sol::optional<sol::object> tcObj = t["text_color"];
+    if (tcObj) {
+        if (tcObj->is<std::string>()) {
+            std::string hex = tcObj->as<std::string>();
+            if (hex.size() >= 7 && hex[0] == '#') {
+                unsigned int r = std::stoul(hex.substr(1, 2), nullptr, 16);
+                unsigned int g = std::stoul(hex.substr(3, 2), nullptr, 16);
+                unsigned int b = std::stoul(hex.substr(5, 2), nullptr, 16);
+                style.textColor = Color(r, g, b, 255);
+            }
+        } else if (tcObj->is<sol::table>()) {
+            sol::table c = tcObj->as<sol::table>();
+            style.textColor = Color(
+                c.get_or(1, 255),
+                c.get_or(2, 255),
+                c.get_or(3, 255),
+                c.get_or(4, 255)
+            );
+        }
+    }
+
+    sol::optional<std::string> ta = t.get<sol::optional<std::string>>("text_align");
+    if (ta) {
+        if (*ta == "left") style.textAlign = TextAlign::Left;
+        else if (*ta == "center") style.textAlign = TextAlign::Center;
+        else if (*ta == "right") style.textAlign = TextAlign::Right;
+    }
+
+    style.visible = t.get_or("visible", true);
+    style.overflowHidden = t.get_or("overflow_hidden", false);
+
+    return style;
+}
+
+/// Helper: apply a Lua style table to an element
+static void applyStyleTable(UIElement* element, const sol::optional<sol::table>& styleTable) {
+    if (styleTable) {
+        element->setStyle(parseStyle(*styleTable));
+    }
+}
+
+/// Helper: add children from a Lua table/array to a UIElement
+static void addLuaChildren(std::shared_ptr<UIElement>& parent, const sol::optional<sol::table>& childrenTable) {
+    if (!childrenTable) return;
+    childrenTable->for_each([&](const sol::object& key, const sol::object& value) {
+        if (value.is<std::shared_ptr<UIElement>>()) {
+            parent->addChild(value.as<std::shared_ptr<UIElement>>());
+        }
+    });
+}
+
+void LuaBindings::bindUIAPI() {
+    auto ui = m_lua.create_named_table("ui");
+
+    // --- Element creation functions ---
+
+    // ui.Box({ id = "foo", style = {...} }, { children... })
+    ui["Box"] = [this](sol::optional<sol::table> props,
+                        sol::optional<sol::table> children) -> std::shared_ptr<UIElement> {
+        std::string id;
+        sol::optional<sol::table> styleTable;
+        if (props) {
+            id = props->get_or<std::string>("id", "");
+            styleTable = props->get<sol::optional<sol::table>>("style");
+        }
+        auto box = std::make_shared<UIBox>(id);
+        applyStyleTable(box.get(), styleTable);
+        auto elem = std::static_pointer_cast<UIElement>(box);
+        addLuaChildren(elem, children);
+        return elem;
+    };
+
+    // ui.Text({ id = "label", text = "Hello", style = {...} })
+    ui["Text"] = [this](sol::optional<sol::table> props) -> std::shared_ptr<UIElement> {
+        std::string id, text;
+        sol::optional<sol::table> styleTable;
+        if (props) {
+            id = props->get_or<std::string>("id", "");
+            text = props->get_or<std::string>("text", "");
+            styleTable = props->get<sol::optional<sol::table>>("style");
+        }
+        auto textElem = std::make_shared<UIText>(id, text);
+        applyStyleTable(textElem.get(), styleTable);
+        if (m_engine && m_engine->getRenderer()) {
+            textElem->setMeasureRenderer(m_engine->getRenderer());
+        }
+        return std::static_pointer_cast<UIElement>(textElem);
+    };
+
+    // ui.Image({ id = "icon", style = {...} })
+    ui["Image"] = [this](sol::optional<sol::table> props) -> std::shared_ptr<UIElement> {
+        std::string id;
+        sol::optional<sol::table> styleTable;
+        if (props) {
+            id = props->get_or<std::string>("id", "");
+            styleTable = props->get<sol::optional<sol::table>>("style");
+        }
+        auto img = std::make_shared<UIImage>(id);
+        applyStyleTable(img.get(), styleTable);
+        return std::static_pointer_cast<UIElement>(img);
+    };
+
+    // ui.Button({ id = "btn", label = "Click Me", style = {...}, on_click = function() ... end })
+    ui["Button"] = [this](sol::optional<sol::table> props) -> std::shared_ptr<UIElement> {
+        std::string id, label;
+        sol::optional<sol::table> styleTable;
+        sol::optional<sol::function> onClick;
+        if (props) {
+            id = props->get_or<std::string>("id", "");
+            label = props->get_or<std::string>("label", "");
+            styleTable = props->get<sol::optional<sol::table>>("style");
+            onClick = props->get<sol::optional<sol::function>>("on_click");
+
+            // Hover/press colors
+            sol::optional<sol::table> hcObj = props->get<sol::optional<sol::table>>("hover_color");
+            sol::optional<sol::table> pcObj = props->get<sol::optional<sol::table>>("press_color");
+
+            auto btn = std::make_shared<UIButton>(id, label);
+            if (styleTable) {
+                btn->setStyle(parseStyle(*styleTable));
+            }
+            if (onClick) {
+                sol::function fn = *onClick;
+                btn->setOnClick([fn]() {
+                    try {
+                        sol::protected_function_result result = fn();
+                        if (!result.valid()) {
+                            sol::error err = result;
+                            MOD_LOG_ERROR("Button on_click error: {}", err.what());
+                        }
+                    } catch (const std::exception& e) {
+                        MOD_LOG_ERROR("Button on_click exception: {}", e.what());
+                    }
+                });
+            }
+            if (hcObj) {
+                btn->setHoverColor(Color(
+                    hcObj->get_or(1, 80), hcObj->get_or(2, 80),
+                    hcObj->get_or(3, 110), hcObj->get_or(4, 255)));
+            }
+            if (pcObj) {
+                btn->setPressColor(Color(
+                    pcObj->get_or(1, 40), pcObj->get_or(2, 40),
+                    pcObj->get_or(3, 60), pcObj->get_or(4, 255)));
+            }
+            return std::static_pointer_cast<UIElement>(btn);
+        }
+        return std::static_pointer_cast<UIElement>(std::make_shared<UIButton>(id, label));
+    };
+
+    // ui.Slider({ id = "vol", min = 0, max = 100, value = 50, on_change = function(v) end, style = {...} })
+    ui["Slider"] = [this](sol::optional<sol::table> props) -> std::shared_ptr<UIElement> {
+        std::string id;
+        float minVal = 0.0f, maxVal = 1.0f, value = 0.0f;
+        sol::optional<sol::table> styleTable;
+        sol::optional<sol::function> onChange;
+
+        if (props) {
+            id = props->get_or<std::string>("id", "");
+            minVal = props->get_or("min", 0.0f);
+            maxVal = props->get_or("max", 1.0f);
+            value = props->get_or("value", 0.0f);
+            styleTable = props->get<sol::optional<sol::table>>("style");
+            onChange = props->get<sol::optional<sol::function>>("on_change");
+        }
+
+        auto slider = std::make_shared<UISlider>(id);
+        slider->setRange(minVal, maxVal);
+        slider->setValue(value);
+        applyStyleTable(slider.get(), styleTable);
+
+        if (onChange) {
+            sol::function fn = *onChange;
+            slider->setOnChange([fn](float v) {
+                try {
+                    sol::protected_function_result result = fn(v);
+                    if (!result.valid()) {
+                        sol::error err = result;
+                        MOD_LOG_ERROR("Slider on_change error: {}", err.what());
+                    }
+                } catch (const std::exception& e) {
+                    MOD_LOG_ERROR("Slider on_change exception: {}", e.what());
+                }
+            });
+        }
+
+        return std::static_pointer_cast<UIElement>(slider);
+    };
+
+    // ui.Grid({ id = "grid", columns = 10, cell_width = 48, cell_height = 48, style = {...} }, { children })
+    ui["Grid"] = [this](sol::optional<sol::table> props,
+                         sol::optional<sol::table> children) -> std::shared_ptr<UIElement> {
+        std::string id;
+        int columns = 1;
+        float cellW = 0.0f, cellH = 0.0f;
+        sol::optional<sol::table> styleTable;
+
+        if (props) {
+            id = props->get_or<std::string>("id", "");
+            columns = props->get_or("columns", 1);
+            cellW = props->get_or("cell_width", 0.0f);
+            cellH = props->get_or("cell_height", 0.0f);
+            styleTable = props->get<sol::optional<sol::table>>("style");
+        }
+
+        auto grid = std::make_shared<UIGrid>(id, columns);
+        grid->setCellSize(cellW, cellH);
+        applyStyleTable(grid.get(), styleTable);
+        auto elem = std::static_pointer_cast<UIElement>(grid);
+        addLuaChildren(elem, children);
+        return elem;
+    };
+
+    // ui.ScrollPanel({ id = "scroll", style = {...} }, { children })
+    ui["ScrollPanel"] = [this](sol::optional<sol::table> props,
+                                sol::optional<sol::table> children) -> std::shared_ptr<UIElement> {
+        std::string id;
+        sol::optional<sol::table> styleTable;
+        if (props) {
+            id = props->get_or<std::string>("id", "");
+            styleTable = props->get<sol::optional<sol::table>>("style");
+        }
+        auto scroll = std::make_shared<UIScrollPanel>(id);
+        applyStyleTable(scroll.get(), styleTable);
+        auto elem = std::static_pointer_cast<UIElement>(scroll);
+        addLuaChildren(elem, children);
+        return elem;
+    };
+
+    // --- Screen management ---
+
+    // ui.register(name, builderFunction)
+    // The builder function is called to create the UI tree.
+    // For static UIs, it's called once. For dynamic UIs, it's called every frame.
+    ui["register"] = [this](const std::string& name, sol::function builder) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (!uiSys) {
+            MOD_LOG_ERROR("ui.register: UI system not available");
+            return;
+        }
+
+        // Call the builder once to create the initial tree
+        try {
+            sol::protected_function_result result = builder();
+            if (result.valid() && result.get_type() != sol::type::nil) {
+                auto root = result.get<std::shared_ptr<UIElement>>();
+                uiSys->registerScreen(name, root);
+                MOD_LOG_INFO("UI screen '{}' registered", name);
+            } else if (!result.valid()) {
+                sol::error err = result;
+                MOD_LOG_ERROR("ui.register '{}': builder error: {}", name, err.what());
+            }
+        } catch (const std::exception& e) {
+            MOD_LOG_ERROR("ui.register '{}': exception: {}", name, e.what());
+        }
+    };
+
+    // ui.registerDynamic(name, builderFunction)
+    // Builder is called every frame to rebuild the UI tree.
+    ui["registerDynamic"] = [this](const std::string& name, sol::function builder) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (!uiSys) {
+            MOD_LOG_ERROR("ui.registerDynamic: UI system not available");
+            return;
+        }
+
+        uiSys->registerDynamicScreen(name, [builder]() -> std::shared_ptr<UIElement> {
+            try {
+                sol::protected_function_result result = builder();
+                if (result.valid() && result.get_type() != sol::type::nil) {
+                    return result.get<std::shared_ptr<UIElement>>();
+                }
+                if (!result.valid()) {
+                    sol::error err = result;
+                    MOD_LOG_ERROR("UI dynamic builder error: {}", err.what());
+                }
+            } catch (const std::exception& e) {
+                MOD_LOG_ERROR("UI dynamic builder exception: {}", e.what());
+            }
+            return nullptr;
+        });
+        MOD_LOG_INFO("UI dynamic screen '{}' registered", name);
+    };
+
+    // ui.show(name) / ui.hide(name)
+    ui["show"] = [this](const std::string& name) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (uiSys) uiSys->showScreen(name);
+    };
+
+    ui["hide"] = [this](const std::string& name) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (uiSys) uiSys->hideScreen(name);
+    };
+
+    // ui.isVisible(name)
+    ui["isVisible"] = [this](const std::string& name) -> bool {
+        UISystem* uiSys = m_engine->getUISystem();
+        return uiSys && uiSys->isScreenVisible(name);
+    };
+
+    // ui.remove(name)
+    ui["remove"] = [this](const std::string& name) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (uiSys) uiSys->removeScreen(name);
+    };
+
+    // ui.findById(id) — find an element across all visible screens
+    // Returns nil if not found (we can't return a raw pointer to Lua safely,
+    // but we can modify properties via the ID)
+    ui["setVisible"] = [this](const std::string& elementId, bool visible) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (!uiSys) return;
+        UIElement* elem = uiSys->findById(elementId);
+        if (elem) elem->getStyle().visible = visible;
+    };
+
+    // ui.setText(elementId, text)
+    ui["setText"] = [this](const std::string& elementId, const std::string& text) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (!uiSys) return;
+        UIElement* elem = uiSys->findById(elementId);
+        if (elem && elem->getType() == UIElementType::Text) {
+            static_cast<UIText*>(elem)->setText(text);
+        } else if (elem && elem->getType() == UIElementType::Button) {
+            static_cast<UIButton*>(elem)->setLabel(text);
+        }
+    };
+
+    // ui.setSliderValue(elementId, value)
+    ui["setSliderValue"] = [this](const std::string& elementId, float value) {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (!uiSys) return;
+        UIElement* elem = uiSys->findById(elementId);
+        if (elem && elem->getType() == UIElementType::Slider) {
+            static_cast<UISlider*>(elem)->setValue(value);
+        }
+    };
+
+    // ui.getSliderValue(elementId) -> float
+    ui["getSliderValue"] = [this](const std::string& elementId) -> float {
+        UISystem* uiSys = m_engine->getUISystem();
+        if (!uiSys) return 0.0f;
+        UIElement* elem = uiSys->findById(elementId);
+        if (elem && elem->getType() == UIElementType::Slider) {
+            return static_cast<UISlider*>(elem)->getValue();
+        }
+        return 0.0f;
     };
 }
 

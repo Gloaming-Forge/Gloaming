@@ -16,6 +16,7 @@
 #include "world/TileMap.hpp"
 #include "lighting/LightingSystem.hpp"
 #include "audio/AudioSystem.hpp"
+#include "ui/UISystem.hpp"
 #include "mod/ModLoader.hpp"
 
 #include <string>
@@ -56,6 +57,9 @@ public:
     // Audio accessors
     AudioSystem* getAudioSystem() { return m_audioSystem; }
 
+    // UI accessors
+    UISystem* getUISystem() { return &m_uiSystem; }
+
     // Mod system accessors
     ModLoader& getModLoader() { return m_modLoader; }
     ContentRegistry& getContentRegistry() { return m_modLoader.getContentRegistry(); }
@@ -92,6 +96,9 @@ private:
 
     // Audio system (managed by SystemScheduler, raw pointer for access)
     AudioSystem* m_audioSystem = nullptr;
+
+    // UI system
+    UISystem m_uiSystem;
 
     // Mod system
     ModLoader m_modLoader;

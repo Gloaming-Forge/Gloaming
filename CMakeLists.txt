@@ -109,6 +109,12 @@ add_library(gloaming_engine STATIC
     src/audio/SoundManager.cpp
     src/audio/MusicManager.cpp
     src/audio/AudioSystem.cpp
+    # UI System (Stage 8)
+    src/ui/UIElement.cpp
+    src/ui/UIWidgets.cpp
+    src/ui/UILayout.cpp
+    src/ui/UIInput.cpp
+    src/ui/UISystem.cpp
     # Mod System (Stage 5)
     src/mod/ModManifest.cpp
     src/mod/ContentRegistry.cpp

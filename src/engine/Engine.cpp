@@ -144,6 +144,12 @@ bool Engine::init(const std::string& configPath) {
                  audioCfg.enabled, audioCfg.masterVolume * 100.0f);
     }
 
+    // Initialize UI system (Stage 8)
+    {
+        m_uiSystem.init(*this);
+        LOG_INFO("UI system initialized");
+    }
+
     // Initialize mod system
     ModLoaderConfig modConfig;
     modConfig.modsDirectory = m_config.getString("mods.directory", "mods");
@@ -205,31 +211,37 @@ void Engine::update(double dt) {
     // Run ECS update systems
     m_systemScheduler.update(dtFloat);
 
+    // Update UI system (processes input, rebuilds dynamic UIs, computes layout)
+    m_uiSystem.update(dtFloat);
+
     // Update parallax background auto-scrolling
     m_parallaxBg.update(dtFloat);
 
     // Handle camera controls for testing (Stage 1 demo)
-    float cameraSpeed = 300.0f * dtFloat;
-    if (m_input.isKeyDown(KEY_W) || m_input.isKeyDown(KEY_UP)) {
-        m_camera.move(0, -cameraSpeed);
-    }
-    if (m_input.isKeyDown(KEY_S) || m_input.isKeyDown(KEY_DOWN)) {
-        m_camera.move(0, cameraSpeed);
-    }
-    if (m_input.isKeyDown(KEY_A) || m_input.isKeyDown(KEY_LEFT)) {
-        m_camera.move(-cameraSpeed, 0);
-    }
-    if (m_input.isKeyDown(KEY_D) || m_input.isKeyDown(KEY_RIGHT)) {
-        m_camera.move(cameraSpeed, 0);
-    }
+    // Skip if UI is consuming input
+    if (!m_uiSystem.isBlockingInput()) {
+        float cameraSpeed = 300.0f * dtFloat;
+        if (m_input.isKeyDown(KEY_W) || m_input.isKeyDown(KEY_UP)) {
+            m_camera.move(0, -cameraSpeed);
+        }
+        if (m_input.isKeyDown(KEY_S) || m_input.isKeyDown(KEY_DOWN)) {
+            m_camera.move(0, cameraSpeed);
+        }
+        if (m_input.isKeyDown(KEY_A) || m_input.isKeyDown(KEY_LEFT)) {
+            m_camera.move(-cameraSpeed, 0);
+        }
+        if (m_input.isKeyDown(KEY_D) || m_input.isKeyDown(KEY_RIGHT)) {
+            m_camera.move(cameraSpeed, 0);
+        }
 
-    // Zoom controls
-    float zoomSpeed = 1.0f * dtFloat;
-    if (m_input.isKeyDown(KEY_Q)) {
-        m_camera.zoom(-zoomSpeed);
-    }
-    if (m_input.isKeyDown(KEY_E)) {
-        m_camera.zoom(zoomSpeed);
+        // Zoom controls
+        float zoomSpeed = 1.0f * dtFloat;
+        if (m_input.isKeyDown(KEY_Q)) {
+            m_camera.zoom(-zoomSpeed);
+        }
+        if (m_input.isKeyDown(KEY_E)) {
+            m_camera.zoom(zoomSpeed);
+        }
     }
 
     // Update world chunk loading based on camera position
@@ -258,8 +270,11 @@ void Engine::render() {
         m_lightingSystem->renderLightOverlay(m_renderer.get(), m_camera);
     }
 
+    // Render UI screens (after lighting overlay, on top of everything)
+    m_uiSystem.render();
+
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 7: Audio System", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.1.0 - Stage 8: UI System", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -321,8 +336,17 @@ void Engine::render() {
         m_renderer->drawText(audioText.c_str(), {20, 200}, 16, Color(150, 255, 150, 255));
     }
 
+    // UI info
+    {
+        auto uiStats = m_uiSystem.getStats();
+        char uiText[128];
+        snprintf(uiText, sizeof(uiText), "UI: %zu screens (%zu visible) | %zu elements",
+                 uiStats.screenCount, uiStats.visibleScreenCount, uiStats.totalElements);
+        m_renderer->drawText(uiText, {20, 230}, 16, Color(220, 180, 255, 255));
+    }
+
     m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F11: Fullscreen",
-                         {20, 230}, 16, Color::Gray());
+                         {20, 260}, 16, Color::Gray());
 
     m_renderer->endFrame();
 }
@@ -332,6 +356,9 @@ void Engine::shutdown() {
 
     // Shutdown mods first (they may reference engine resources)
     m_modLoader.shutdown();
+
+    // Shutdown UI system (after mods, before renderer)
+    m_uiSystem.shutdown();
 
     // Close world (auto-saves if enabled)
     if (m_tileMap.isWorldLoaded()) {
