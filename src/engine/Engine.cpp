@@ -209,6 +209,8 @@ bool Engine::init(const std::string& configPath) {
             bindEntityAPI(
                 m_modLoader.getLuaBindings().getState(),
                 *this, m_entitySpawning, *projSys, m_collisionLayers);
+        } else {
+            LOG_WARN("ProjectileSystem not found — entity/projectile Lua APIs will be unavailable");
         }
         LOG_INFO("Gameplay and entity Lua APIs registered");
 

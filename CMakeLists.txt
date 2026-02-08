@@ -124,6 +124,8 @@ add_library(gloaming_engine STATIC
     # Gameplay Systems (Stage 9)
     src/gameplay/GameplayLuaBindings.cpp
     # Entity Spawning & Projectiles (Stage 11)
+    src/gameplay/EntitySpawning.cpp
+    src/gameplay/ProjectileSystem.cpp
     src/gameplay/EntityLuaBindings.cpp
 )
 

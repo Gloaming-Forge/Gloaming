@@ -27,7 +27,7 @@ TEST(ProjectileComponentTest, DefaultValues) {
     EXPECT_EQ(proj.hitMask, 0u);
     EXPECT_TRUE(proj.alive);
     EXPECT_FALSE(proj.hitTile);
-    EXPECT_TRUE(proj.alreadyHit.empty());
+    EXPECT_EQ(proj.alreadyHitCount, 0u);
 }
 
 TEST(ProjectileComponentTest, CustomValues) {
@@ -69,23 +69,30 @@ TEST(ProjectileComponentTest, AlreadyHitTracking) {
     Projectile proj;
     proj.pierce = 3;
 
-    proj.alreadyHit.push_back(10);
-    proj.alreadyHit.push_back(20);
+    EXPECT_TRUE(proj.addHit(10));
+    EXPECT_TRUE(proj.addHit(20));
 
-    EXPECT_EQ(proj.alreadyHit.size(), 2u);
+    EXPECT_EQ(proj.alreadyHitCount, 2u);
 
     // Check if entity is already hit
-    bool found = false;
-    for (uint32_t id : proj.alreadyHit) {
-        if (id == 10) { found = true; break; }
-    }
-    EXPECT_TRUE(found);
+    EXPECT_TRUE(proj.wasHit(10));
+    EXPECT_TRUE(proj.wasHit(20));
+    EXPECT_FALSE(proj.wasHit(99));
+}
 
-    found = false;
-    for (uint32_t id : proj.alreadyHit) {
-        if (id == 99) { found = true; break; }
+TEST(ProjectileComponentTest, AlreadyHitBufferFull) {
+    Projectile proj;
+    proj.pierce = -1; // infinite
+
+    // Fill the buffer
+    for (uint8_t i = 0; i < Projectile::MaxAlreadyHit; ++i) {
+        EXPECT_TRUE(proj.addHit(i + 1));
     }
-    EXPECT_FALSE(found);
+    EXPECT_EQ(proj.alreadyHitCount, Projectile::MaxAlreadyHit);
+
+    // Buffer is full, addHit returns false
+    EXPECT_FALSE(proj.addHit(100));
+    EXPECT_FALSE(proj.wasHit(100));
 }
 
 // =============================================================================
@@ -716,16 +723,18 @@ TEST(ProjectileIntegrationTest, PiercingProjectileHitsMultiple) {
 
     // Simulate pierce tracking
     auto& p = registry.get<Projectile>(proj);
-    p.alreadyHit.push_back(10); // Simulated first hit
+    p.addHit(10); // Simulated first hit
     p.pierce--;
     EXPECT_EQ(p.pierce, 1);
 
-    p.alreadyHit.push_back(11); // Second hit
+    p.addHit(11); // Second hit
     p.pierce--;
     EXPECT_EQ(p.pierce, 0);
 
     // At pierce=0, projectile should be destroyed on next hit
     EXPECT_EQ(p.pierce, 0);
+    EXPECT_TRUE(p.wasHit(10));
+    EXPECT_TRUE(p.wasHit(11));
 }
 
 TEST(ProjectileIntegrationTest, CollisionLayerFiltering) {

@@ -186,6 +186,31 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
             std::string n = data.get_or<std::string>("name", "");
             std::string t = data.get_or<std::string>("type", "");
             registry.addOrReplace<Name>(entity, n, t);
+        } else if (name == "velocity") {
+            float vx = data.get_or("x", 0.0f);
+            float vy = data.get_or("y", 0.0f);
+            float angular = data.get_or("angular", 0.0f);
+            if (registry.has<Velocity>(entity)) {
+                auto& v = registry.get<Velocity>(entity);
+                v.linear = Vec2(vx, vy);
+                v.angular = angular;
+            } else {
+                registry.add<Velocity>(entity, Vec2(vx, vy), angular);
+            }
+        } else if (name == "transform") {
+            float x = data.get_or("x", 0.0f);
+            float y = data.get_or("y", 0.0f);
+            float rotation = data.get_or("rotation", 0.0f);
+            float scaleX = data.get_or("scale_x", 1.0f);
+            float scaleY = data.get_or("scale_y", 1.0f);
+            if (registry.has<Transform>(entity)) {
+                auto& tr = registry.get<Transform>(entity);
+                tr.position = Vec2(x, y);
+                tr.rotation = rotation;
+                tr.scale = Vec2(scaleX, scaleY);
+            } else {
+                registry.add<Transform>(entity, Vec2(x, y), rotation, Vec2(scaleX, scaleY));
+            }
         } else {
             MOD_LOG_WARN("entity.set_component: unknown component '{}'", name);
         }
@@ -265,6 +290,40 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
             t["pierce"] = p.pierce;
             t["alive"] = p.alive;
             return t;
+        } else if (name == "lifetime") {
+            if (!registry.has<Lifetime>(entity)) return sol::nil;
+            auto& l = registry.get<Lifetime>(entity);
+            sol::table t = lua.create_table();
+            t["duration"] = l.duration;
+            t["elapsed"] = l.elapsed;
+            t["remaining"] = l.getRemaining();
+            t["progress"] = l.getProgress();
+            t["expired"] = l.isExpired();
+            return t;
+        } else if (name == "light") {
+            if (!registry.has<LightSource>(entity)) return sol::nil;
+            auto& l = registry.get<LightSource>(entity);
+            sol::table t = lua.create_table();
+            t["radius"] = l.radius;
+            t["intensity"] = l.intensity;
+            t["enabled"] = l.enabled;
+            t["flicker"] = l.flicker;
+            sol::table color = lua.create_table();
+            color["r"] = l.color.r;
+            color["g"] = l.color.g;
+            color["b"] = l.color.b;
+            color["a"] = l.color.a;
+            t["color"] = color;
+            return t;
+        } else if (name == "sprite") {
+            if (!registry.has<Sprite>(entity)) return sol::nil;
+            auto& s = registry.get<Sprite>(entity);
+            sol::table t = lua.create_table();
+            t["visible"] = s.visible;
+            t["layer"] = s.layer;
+            t["flip_x"] = s.flipX;
+            t["flip_y"] = s.flipY;
+            return t;
         }
 
         return sol::nil;
@@ -300,11 +359,13 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
         if (!registry.valid(entity)) return;
 
         if (name == "health")      registry.remove<Health>(entity);
+        else if (name == "transform")  registry.remove<Transform>(entity);
         else if (name == "velocity")   registry.remove<Velocity>(entity);
         else if (name == "collider")   registry.remove<Collider>(entity);
         else if (name == "gravity")    registry.remove<Gravity>(entity);
         else if (name == "sprite")     registry.remove<Sprite>(entity);
         else if (name == "light")      registry.remove<LightSource>(entity);
+        else if (name == "name")       registry.remove<Name>(entity);
         else if (name == "lifetime")   registry.remove<Lifetime>(entity);
         else if (name == "projectile") registry.remove<Projectile>(entity);
         else if (name == "animation")  registry.remove<AnimationController>(entity);

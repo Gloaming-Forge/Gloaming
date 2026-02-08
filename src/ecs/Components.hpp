@@ -5,6 +5,7 @@
 #include "rendering/Texture.hpp"
 
 #include <string>
+#include <array>
 #include <vector>
 #include <cstdint>
 #include <cmath>
@@ -257,6 +258,8 @@ struct NPCTag {
 
 /// Projectile component — tracks projectile behavior, hits, and lifecycle
 struct Projectile {
+    static constexpr size_t MaxAlreadyHit = 8;
+
     uint32_t ownerEntity = 0;            // Entity that fired this projectile
     float damage = 10.0f;
     float speed = 400.0f;                // Initial speed (pixels/sec)
@@ -270,7 +273,23 @@ struct Projectile {
     uint32_t hitMask = 0;               // Which collision layers this projectile damages
     bool alive = true;                   // Set to false to mark for destruction
     bool hitTile = false;               // Set by collision callback when hitting a tile
-    std::vector<uint32_t> alreadyHit;   // Entity IDs already hit (for pierce)
+    std::array<uint32_t, MaxAlreadyHit> alreadyHit{};  // Entity IDs already hit (for pierce)
+    uint8_t alreadyHitCount = 0;        // Number of valid entries in alreadyHit
+
+    /// Record a hit entity. Returns false if the buffer is full.
+    bool addHit(uint32_t entityId) {
+        if (alreadyHitCount >= MaxAlreadyHit) return false;
+        alreadyHit[alreadyHitCount++] = entityId;
+        return true;
+    }
+
+    /// Check if an entity was already hit
+    bool wasHit(uint32_t entityId) const {
+        for (uint8_t i = 0; i < alreadyHitCount; ++i) {
+            if (alreadyHit[i] == entityId) return true;
+        }
+        return false;
+    }
 };
 
 /// Gravity-affected entity
