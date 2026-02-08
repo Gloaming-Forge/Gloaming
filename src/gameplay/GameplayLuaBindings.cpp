@@ -1,7 +1,7 @@
 #include "gameplay/GameplayLuaBindings.hpp"
-#include "gameplay/Gameplay.hpp"
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
+#include "gameplay/Gameplay.hpp"
 
 namespace gloaming {
 
@@ -52,11 +52,19 @@ static Key parseKey(const std::string& name) {
     return Key::Space;
 }
 
+/// Helper: parse a PlaybackMode from Lua string
+static PlaybackMode parsePlaybackMode(const std::string& mode) {
+    if (mode == "once")      return PlaybackMode::Once;
+    if (mode == "ping_pong" || mode == "pingpong") return PlaybackMode::PingPong;
+    return PlaybackMode::Loop; // default
+}
+
 void bindGameplayAPI(sol::state& lua, Engine& engine,
                      InputActionMap& actions,
                      Pathfinder& pathfinder,
                      DialogueSystem& dialogue,
-                     TileLayerManager& tileLayers) {
+                     TileLayerManager& tileLayers,
+                     CollisionLayerRegistry& collisionLayers) {
 
     // =========================================================================
     // game_mode API — configure the game type
@@ -438,7 +446,8 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         for (size_t i = 1; i <= len; ++i) {
             sol::table n = nodes[i];
             DialogueNode node;
-            node.id = n.get_or<std::string>("id", "node_" + std::to_string(i));
+            std::string defaultId = "node_" + std::to_string(i);
+            node.id = n.get_or<std::string>("id", defaultId);
             node.speaker = n.get_or<std::string>("speaker", "");
             node.text = n.get_or<std::string>("text", "");
             node.portraitId = n.get_or<std::string>("portrait", "");
@@ -547,6 +556,229 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
     layerApi["GROUND"]     = static_cast<int>(TileLayerIndex::Ground);
     layerApi["DECORATION"] = static_cast<int>(TileLayerIndex::Decoration);
     layerApi["FOREGROUND"] = static_cast<int>(TileLayerIndex::Foreground);
+
+    // =========================================================================
+    // animation API — sprite animation controller (Stage 10)
+    // =========================================================================
+    auto animApi = lua.create_named_table("animation");
+
+    // animation.add(entityId, clipName, { sheet = "player.png", row = 0, frames = 4, fps = 6,
+    //                                      mode = "loop", frame_width = 16, frame_height = 16 })
+    animApi["add"] = [&engine](uint32_t entityId, const std::string& clipName, sol::table opts) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity)) {
+            MOD_LOG_WARN("animation.add: invalid entity {}", entityId);
+            return;
+        }
+
+        // Ensure the entity has an AnimationController
+        if (!registry.has<AnimationController>(entity)) {
+            registry.add<AnimationController>(entity);
+        }
+        auto& ctrl = registry.get<AnimationController>(entity);
+
+        int row = opts.get_or("row", 0);
+        int frameCount = opts.get_or("frames", 1);
+        float fps = opts.get_or("fps", 10.0f);
+        std::string modeStr = opts.get_or<std::string>("mode", "loop");
+        PlaybackMode mode = parsePlaybackMode(modeStr);
+
+        // Frame dimensions: explicit or derived from texture
+        int frameWidth = opts.get_or("frame_width", 0);
+        int frameHeight = opts.get_or("frame_height", 0);
+
+        // If frame dimensions are not specified, try to derive from the Sprite's texture
+        if ((frameWidth <= 0 || frameHeight <= 0) && registry.has<Sprite>(entity)) {
+            auto& sprite = registry.get<Sprite>(entity);
+            if (sprite.texture && sprite.texture->isValid()) {
+                if (frameWidth <= 0 && frameCount > 0) {
+                    frameWidth = sprite.texture->getWidth() / frameCount;
+                }
+                if (frameHeight <= 0) {
+                    // Assume square frames if only width is known, or use texture height
+                    // divided by the largest row index + 1 we've seen.
+                    // Simple heuristic: use frameWidth if it looks reasonable, else full height.
+                    frameHeight = frameWidth > 0 ? frameWidth : sprite.texture->getHeight();
+                }
+            }
+        }
+
+        if (frameWidth <= 0 || frameHeight <= 0) {
+            MOD_LOG_WARN("animation.add: cannot determine frame dimensions for clip '{}'", clipName);
+            return;
+        }
+
+        ctrl.addClipFromSheet(clipName, row, frameCount, frameWidth, frameHeight, fps, mode);
+    };
+
+    // animation.play(entityId, clipName)
+    animApi["play"] = [&engine](uint32_t entityId, const std::string& clipName) -> bool {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<AnimationController>(entity)) return false;
+        return registry.get<AnimationController>(entity).play(clipName);
+    };
+
+    // animation.stop(entityId)
+    animApi["stop"] = [&engine](uint32_t entityId) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<AnimationController>(entity)) return;
+        registry.get<AnimationController>(entity).stop();
+    };
+
+    // animation.play_directional(entityId, baseName, facing)
+    // e.g. animation.play_directional(player, "walk", "down") -> plays "walk_down"
+    animApi["play_directional"] = [&engine](uint32_t entityId, const std::string& baseName,
+                                             const std::string& direction) -> bool {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<AnimationController>(entity)) return false;
+        return registry.get<AnimationController>(entity).playDirectional(baseName, direction);
+    };
+
+    // animation.current(entityId) -> string (clip name) or nil
+    animApi["current"] = [&engine](uint32_t entityId) -> sol::object {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<AnimationController>(entity)) return sol::nil;
+        const auto& name = registry.get<AnimationController>(entity).getCurrentClipName();
+        if (name.empty()) return sol::nil;
+        sol::state_view luaView = engine.getModLoader().getLuaBindings().getState();
+        return sol::make_object(luaView, name);
+    };
+
+    // animation.is_finished(entityId) -> bool
+    animApi["is_finished"] = [&engine](uint32_t entityId) -> bool {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<AnimationController>(entity)) return true;
+        return registry.get<AnimationController>(entity).isFinished();
+    };
+
+    // animation.on_frame(entityId, clipName, frameIndex, callback)
+    animApi["on_frame"] = [&engine](uint32_t entityId, const std::string& clipName,
+                                     int frameIndex, sol::function callback) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<AnimationController>(entity)) {
+            MOD_LOG_WARN("animation.on_frame: entity {} has no AnimationController", entityId);
+            return;
+        }
+
+        sol::function fn = callback;
+        registry.get<AnimationController>(entity).addFrameEvent(
+            clipName, frameIndex,
+            [fn](Entity e) {
+                try { fn(static_cast<uint32_t>(e)); }
+                catch (const std::exception& ex) {
+                    MOD_LOG_ERROR("animation.on_frame callback error: {}", ex.what());
+                }
+            }
+        );
+    };
+
+    // animation.get_frame(entityId) -> int (current frame index)
+    animApi["get_frame"] = [&engine](uint32_t entityId) -> int {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<AnimationController>(entity)) return -1;
+        return registry.get<AnimationController>(entity).currentFrame;
+    };
+
+    // =========================================================================
+    // collision API — collision layer management (Stage 10)
+    // =========================================================================
+    auto collisionApi = lua.create_named_table("collision");
+
+    // collision.set_layer(entityId, layerName)
+    collisionApi["set_layer"] = [&engine, &collisionLayers](uint32_t entityId,
+                                                              const std::string& layerName) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<Collider>(entity)) {
+            MOD_LOG_WARN("collision.set_layer: entity {} has no Collider", entityId);
+            return;
+        }
+        collisionLayers.setLayer(registry.get<Collider>(entity), layerName);
+    };
+
+    // collision.set_mask(entityId, { "tile", "enemy", "npc" })
+    collisionApi["set_mask"] = [&engine, &collisionLayers](uint32_t entityId, sol::table maskTable) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<Collider>(entity)) {
+            MOD_LOG_WARN("collision.set_mask: entity {} has no Collider", entityId);
+            return;
+        }
+
+        std::vector<std::string> names;
+        size_t len = maskTable.size();
+        names.reserve(len);
+        for (size_t i = 1; i <= len; ++i) {
+            sol::optional<std::string> name = maskTable.get<sol::optional<std::string>>(i);
+            if (name) names.push_back(*name);
+        }
+        collisionLayers.setMask(registry.get<Collider>(entity), names);
+    };
+
+    // collision.add_mask(entityId, layerName)
+    collisionApi["add_mask"] = [&engine, &collisionLayers](uint32_t entityId,
+                                                             const std::string& layerName) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<Collider>(entity)) return;
+        collisionLayers.addMask(registry.get<Collider>(entity), layerName);
+    };
+
+    // collision.remove_mask(entityId, layerName)
+    collisionApi["remove_mask"] = [&engine, &collisionLayers](uint32_t entityId,
+                                                                const std::string& layerName) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<Collider>(entity)) return;
+        collisionLayers.removeMask(registry.get<Collider>(entity), layerName);
+    };
+
+    // collision.get_layer(entityId) -> int (raw bitmask)
+    collisionApi["get_layer"] = [&engine](uint32_t entityId) -> uint32_t {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<Collider>(entity)) return 0;
+        return registry.get<Collider>(entity).layer;
+    };
+
+    // collision.get_mask(entityId) -> int (raw bitmask)
+    collisionApi["get_mask"] = [&engine](uint32_t entityId) -> uint32_t {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<Collider>(entity)) return 0;
+        return registry.get<Collider>(entity).mask;
+    };
+
+    // collision.register_layer(name, bit)
+    collisionApi["register_layer"] = [&collisionLayers](const std::string& name, int bit) -> bool {
+        return collisionLayers.registerLayer(name, bit);
+    };
+
+    // collision.can_collide(entityA, entityB) -> bool
+    collisionApi["can_collide"] = [&engine](uint32_t idA, uint32_t idB) -> bool {
+        auto& registry = engine.getRegistry();
+        Entity a = static_cast<Entity>(idA);
+        Entity b = static_cast<Entity>(idB);
+        if (!registry.valid(a) || !registry.valid(b)) return false;
+        if (!registry.has<Collider>(a) || !registry.has<Collider>(b)) return false;
+        return registry.get<Collider>(a).canCollideWith(registry.get<Collider>(b));
+    };
+
+    // collision.set_enabled(entityId, enabled)
+    collisionApi["set_enabled"] = [&engine](uint32_t entityId, bool enabled) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity) || !registry.has<Collider>(entity)) return;
+        registry.get<Collider>(entity).enabled = enabled;
+    };
 }
 
 } // namespace gloaming

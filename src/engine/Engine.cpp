@@ -165,6 +165,9 @@ bool Engine::init(const std::string& configPath) {
         // State machine system (for entity AI)
         m_systemScheduler.addSystem<StateMachineSystem>(SystemPhase::Update);
 
+        // Animation controller system (Stage 10)
+        m_systemScheduler.addSystem<AnimationControllerSystem>(SystemPhase::Update);
+
         // Camera controller system
         m_systemScheduler.addSystem<CameraControllerSystem>(SystemPhase::PostUpdate);
 
@@ -176,7 +179,8 @@ bool Engine::init(const std::string& configPath) {
         m_tileLayers.setTileSize(m_tileRenderer.getTileSize());
 
         LOG_INFO("Gameplay systems initialized (grid movement, state machine, camera controller, "
-                 "pathfinding, dialogue, input actions, tile layers)");
+                 "pathfinding, dialogue, input actions, tile layers, animation controller, "
+                 "collision layers)");
     }
 
     // Initialize mod system
@@ -188,7 +192,8 @@ bool Engine::init(const std::string& configPath) {
         // Register gameplay Lua APIs (available to all mods)
         bindGameplayAPI(
             m_modLoader.getLuaBindings().getState(),
-            *this, m_inputActions, m_pathfinder, m_dialogueSystem, m_tileLayers);
+            *this, m_inputActions, m_pathfinder, m_dialogueSystem, m_tileLayers,
+            m_collisionLayers);
         LOG_INFO("Gameplay Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
@@ -333,7 +338,7 @@ void Engine::render() {
                             m_renderer->getScreenHeight());
 
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.2.0 - Stage 9: Gameplay Systems", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.3.0 - Stage 10: Sprite Animation & Collision Layers", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
