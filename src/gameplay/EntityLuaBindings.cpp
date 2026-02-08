@@ -421,7 +421,7 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
     //     sprite = "textures/arrow.png",
     //     gravity = true,
     //     lifetime = 3.0,
-    //     pierce = 0,            -- 0 = destroy on first hit, -1 = infinite
+    //     pierce = 0,            -- 0 = destroy on first hit, N = N additional hits after the first, -1 = unlimited (up to 8 unique targets)
     //     max_distance = 0,      -- 0 = unlimited
     //     layer = "projectile",
     //     hits = { "enemy", "tile" },

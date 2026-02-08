@@ -265,7 +265,7 @@ struct Projectile {
     float speed = 400.0f;                // Initial speed (pixels/sec)
     float lifetime = 5.0f;               // Seconds until despawn
     float age = 0.0f;                    // Current age in seconds
-    int pierce = 0;                      // 0 = destroy on first hit, -1 = infinite, N = hits remaining
+    int pierce = 0;                      // 0 = destroy on first hit, -1 = unlimited (up to MaxAlreadyHit), N>0 = N additional hits allowed after the first
     bool gravityAffected = false;        // Whether world gravity applies
     bool autoRotate = true;              // Rotate sprite to face velocity direction
     float maxDistance = 0.0f;            // Max travel distance (0 = unlimited)

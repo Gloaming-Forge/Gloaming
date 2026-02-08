@@ -57,11 +57,38 @@ EntityQueryResult EntitySpawning::findNearest(
         float cx, float cy, float maxRadius,
         const EntityQueryFilter& filter) const {
 
-    auto results = findInRadius(cx, cy, maxRadius, filter);
-    if (results.empty()) {
-        return EntityQueryResult{};
-    }
-    return results[0];
+    if (!m_registry) return EntityQueryResult{};
+
+    float maxRadiusSq = maxRadius * maxRadius;
+    float bestDistSq = maxRadiusSq + 1.0f;
+    EntityQueryResult best;
+
+    m_registry->each<Transform>([&](Entity entity, const Transform& transform) {
+        if (!filter.type.empty()) {
+            if (!m_registry->has<Name>(entity)) return;
+            if (m_registry->get<Name>(entity).type != filter.type) return;
+        }
+        if (filter.requiredLayer != 0) {
+            if (!m_registry->has<Collider>(entity)) return;
+            if ((m_registry->get<Collider>(entity).layer & filter.requiredLayer) == 0) return;
+        }
+        if (filter.excludeDead && m_registry->has<Health>(entity)) {
+            if (m_registry->get<Health>(entity).isDead()) return;
+        }
+
+        float dx = transform.position.x - cx;
+        float dy = transform.position.y - cy;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq <= maxRadiusSq && distSq < bestDistSq) {
+            bestDistSq = distSq;
+            best.entity = entity;
+            best.distance = std::sqrt(distSq);
+            best.position = transform.position;
+        }
+    });
+
+    return best;
 }
 
 size_t EntitySpawning::countByType(const std::string& type) const {

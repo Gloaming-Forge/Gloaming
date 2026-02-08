@@ -130,12 +130,17 @@ void ProjectileSystem::checkEntityHits(Entity projEntity, const Transform& projT
         info.hitTile = false;
         m_callbacks.fireOnHit(info);
 
-        // Track hit for pierce
-        proj.addHit(targetId);
+        // Track hit for pierce; destroy if buffer is full to prevent
+        // re-damaging earlier targets on infinite-pierce projectiles
+        if (!proj.addHit(targetId)) {
+            proj.alive = false;
+            toDestroy.insert(projEntity);
+            return;
+        }
 
-        // Handle pierce
+        // Handle pierce: 0 = destroy on this hit, N>0 = N more hits allowed,
+        // -1 = unlimited hits (until buffer fills)
         if (proj.pierce == 0) {
-            // Destroy on first hit
             proj.alive = false;
             toDestroy.insert(projEntity);
             return; // Stop checking further targets
