@@ -54,12 +54,12 @@ struct EntityDefinition {
     // Lifetime
     std::optional<float> lifetime;
 
-    // Animation definitions
+    // Animation definitions (applied via AnimationController component)
     struct AnimationDef {
         std::string name;
         std::vector<Rect> frames;
-        float frameTime = 0.1f;
-        bool looping = true;
+        float fps = 10.0f;
+        std::string mode = "loop"; // "loop", "once", "ping_pong"
     };
     std::vector<AnimationDef> animations;
     std::string defaultAnimation;
