@@ -180,86 +180,9 @@ TEST(AnimationControllerTest, AddFrameEvent) {
 // AnimationControllerSystem Tests
 // =============================================================================
 
-// Mock Engine for system initialization
-// The AnimationControllerSystem only uses the registry, so we need a minimal setup
-class MockAnimEngine {
-public:
-    Registry registry;
-    // We can't easily mock Engine without including all its dependencies.
-    // Instead we'll test the AnimationController logic directly.
-};
-
-// Helper: simulate the system update loop without Engine dependency
+// Helper: delegates directly to AnimationController::tick()
 static void simulateAnimUpdate(AnimationController& ctrl, Sprite& sprite, Entity entity, float dt) {
-    if (ctrl.currentClip.empty()) return;
-
-    auto clipIt = ctrl.clips.find(ctrl.currentClip);
-    if (clipIt == ctrl.clips.end() || clipIt->second.frames.empty()) return;
-
-    const auto& clip = clipIt->second;
-
-    // Fire initial frame events
-    if (ctrl.lastEventFrame == -1) {
-        // Fire frame 0 events
-        auto eventMapIt = ctrl.frameEvents.find(ctrl.currentClip);
-        if (eventMapIt != ctrl.frameEvents.end()) {
-            auto frameIt = eventMapIt->second.find(ctrl.currentFrame);
-            if (frameIt != eventMapIt->second.end()) {
-                for (auto& cb : frameIt->second) cb(entity);
-            }
-        }
-        ctrl.lastEventFrame = ctrl.currentFrame;
-    }
-
-    if (ctrl.finished) {
-        if (ctrl.currentFrame >= 0 && ctrl.currentFrame < static_cast<int>(clip.frames.size()))
-            sprite.sourceRect = clip.frames[ctrl.currentFrame];
-        return;
-    }
-
-    float frameDuration = (clip.fps > 0.0f) ? (1.0f / clip.fps) : 1.0f;
-    ctrl.frameTimer += dt;
-
-    while (ctrl.frameTimer >= frameDuration && !ctrl.finished) {
-        ctrl.frameTimer -= frameDuration;
-
-        int prevFrame = ctrl.currentFrame;
-        int frameCount = static_cast<int>(clip.frames.size());
-
-        // Advance frame
-        switch (clip.mode) {
-            case PlaybackMode::Loop:
-                ctrl.currentFrame = (ctrl.currentFrame + 1) % frameCount;
-                break;
-            case PlaybackMode::Once:
-                if (ctrl.currentFrame < frameCount - 1) ctrl.currentFrame++;
-                else ctrl.finished = true;
-                break;
-            case PlaybackMode::PingPong:
-                if (!ctrl.pingPongReverse) {
-                    if (ctrl.currentFrame < frameCount - 1) ctrl.currentFrame++;
-                    else { ctrl.pingPongReverse = true; if (frameCount > 2) ctrl.currentFrame--; }
-                } else {
-                    if (ctrl.currentFrame > 0) ctrl.currentFrame--;
-                    else { ctrl.pingPongReverse = false; if (frameCount > 2) ctrl.currentFrame++; }
-                }
-                break;
-        }
-
-        if (ctrl.currentFrame != prevFrame) {
-            auto eventMapIt = ctrl.frameEvents.find(ctrl.currentClip);
-            if (eventMapIt != ctrl.frameEvents.end()) {
-                auto frameIt = eventMapIt->second.find(ctrl.currentFrame);
-                if (frameIt != eventMapIt->second.end()) {
-                    for (auto& cb : frameIt->second) cb(entity);
-                }
-            }
-            ctrl.lastEventFrame = ctrl.currentFrame;
-        }
-    }
-
-    if (ctrl.currentFrame >= 0 && ctrl.currentFrame < static_cast<int>(clip.frames.size()))
-        sprite.sourceRect = clip.frames[ctrl.currentFrame];
+    ctrl.tick(dt, entity, sprite);
 }
 
 TEST(AnimationSystemTest, LoopPlayback) {
@@ -348,6 +271,31 @@ TEST(AnimationSystemTest, PingPongPlayback) {
     EXPECT_EQ(ctrl.currentFrame, 1); // forward again
 
     EXPECT_FALSE(ctrl.isFinished()); // PingPong never finishes
+}
+
+TEST(AnimationSystemTest, PingPongTwoFrames) {
+    AnimationController ctrl;
+    Sprite sprite;
+    // 2 frames: should alternate 0, 1, 0, 1, ... without stutter
+    ctrl.addClipFromSheet("blink", 0, 2, 16, 16, 10.0f, PlaybackMode::PingPong);
+    ctrl.play("blink");
+
+    simulateAnimUpdate(ctrl, sprite, NullEntity, 0.0f);
+    EXPECT_EQ(ctrl.currentFrame, 0);
+
+    simulateAnimUpdate(ctrl, sprite, NullEntity, 0.1f);
+    EXPECT_EQ(ctrl.currentFrame, 1);
+
+    simulateAnimUpdate(ctrl, sprite, NullEntity, 0.1f);
+    EXPECT_EQ(ctrl.currentFrame, 0);
+
+    simulateAnimUpdate(ctrl, sprite, NullEntity, 0.1f);
+    EXPECT_EQ(ctrl.currentFrame, 1);
+
+    simulateAnimUpdate(ctrl, sprite, NullEntity, 0.1f);
+    EXPECT_EQ(ctrl.currentFrame, 0);
+
+    EXPECT_FALSE(ctrl.isFinished());
 }
 
 TEST(AnimationSystemTest, SpriteSourceRectUpdated) {
@@ -512,7 +460,10 @@ TEST(CollisionLayerRegistryTest, RegisterCustomLayer) {
 TEST(CollisionLayerRegistryTest, RegisterOutOfRangeBit) {
     CollisionLayerRegistry reg;
     EXPECT_FALSE(reg.registerLayer("bad_neg", -1));
-    EXPECT_FALSE(reg.registerLayer("bad_high", 16));
+    EXPECT_FALSE(reg.registerLayer("bad_high", 32));
+    // Bit 31 should be valid (full 32-bit range)
+    EXPECT_TRUE(reg.registerLayer("high_bit", 31));
+    EXPECT_EQ(reg.getLayerBit("high_bit"), static_cast<uint32_t>(1u << 31));
 }
 
 TEST(CollisionLayerRegistryTest, UnknownLayerReturnsZero) {

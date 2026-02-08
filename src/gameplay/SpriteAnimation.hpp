@@ -148,6 +148,116 @@ struct AnimationController {
         }
         return nullptr;
     }
+
+    // -----------------------------------------------------------------
+    // Tick — advances frame state and writes to sprite
+    // -----------------------------------------------------------------
+
+    /// Advance animation state by dt seconds, update sprite sourceRect, and
+    /// fire any registered frame-event callbacks.  Called once per frame by
+    /// AnimationControllerSystem (or directly in tests).
+    void tick(float dt, Entity entity, Sprite& sprite) {
+        if (currentClip.empty()) return;
+
+        auto clipIt = clips.find(currentClip);
+        if (clipIt == clips.end() || clipIt->second.frames.empty()) return;
+
+        const auto& clip = clipIt->second;
+
+        // Fire events for the initial frame (frame 0) on the first tick
+        if (lastEventFrame == -1) {
+            fireFrameEvents(entity);
+            lastEventFrame = currentFrame;
+        }
+
+        if (finished) {
+            // Still update the sprite to the held frame
+            applyFrame(clip, sprite);
+            return;
+        }
+
+        float frameDuration = (clip.fps > 0.0f) ? (1.0f / clip.fps) : 1.0f;
+
+        frameTimer += dt;
+
+        while (frameTimer >= frameDuration && !finished) {
+            frameTimer -= frameDuration;
+
+            int prevFrame = currentFrame;
+            advanceFrame(clip);
+
+            // Fire events when the frame changes
+            if (currentFrame != prevFrame) {
+                fireFrameEvents(entity);
+                lastEventFrame = currentFrame;
+            }
+        }
+
+        applyFrame(clip, sprite);
+    }
+
+private:
+    /// Apply the current frame's source rect to the sprite
+    void applyFrame(const AnimationClip& clip, Sprite& sprite) {
+        if (currentFrame >= 0 &&
+            currentFrame < static_cast<int>(clip.frames.size())) {
+            sprite.sourceRect = clip.frames[currentFrame];
+        }
+    }
+
+    /// Advance to the next frame according to the clip's playback mode
+    void advanceFrame(const AnimationClip& clip) {
+        int frameCount = static_cast<int>(clip.frames.size());
+        if (frameCount <= 1) {
+            finished = (clip.mode == PlaybackMode::Once);
+            return;
+        }
+
+        switch (clip.mode) {
+            case PlaybackMode::Loop:
+                currentFrame = (currentFrame + 1) % frameCount;
+                break;
+
+            case PlaybackMode::Once:
+                if (currentFrame < frameCount - 1) {
+                    currentFrame++;
+                } else {
+                    finished = true;
+                }
+                break;
+
+            case PlaybackMode::PingPong:
+                if (!pingPongReverse) {
+                    if (currentFrame < frameCount - 1) {
+                        currentFrame++;
+                    } else {
+                        pingPongReverse = true;
+                        currentFrame--;
+                    }
+                } else {
+                    if (currentFrame > 0) {
+                        currentFrame--;
+                    } else {
+                        pingPongReverse = false;
+                        currentFrame++;
+                    }
+                }
+                break;
+        }
+    }
+
+    /// Fire any registered callbacks for the current frame
+    void fireFrameEvents(Entity entity) {
+        auto eventMapIt = frameEvents.find(currentClip);
+        if (eventMapIt == frameEvents.end()) return;
+
+        auto frameIt = eventMapIt->second.find(currentFrame);
+        if (frameIt == eventMapIt->second.end()) return;
+
+        for (auto& callback : frameIt->second) {
+            callback(entity);
+        }
+    }
 };
 
 // =========================================================================
@@ -162,115 +272,10 @@ public:
 
     void update(float dt) override {
         getRegistry().each<AnimationController, Sprite>(
-            [this, dt](Entity entity, AnimationController& ctrl, Sprite& sprite) {
-                if (ctrl.currentClip.empty()) return;
-
-                auto clipIt = ctrl.clips.find(ctrl.currentClip);
-                if (clipIt == ctrl.clips.end() || clipIt->second.frames.empty()) return;
-
-                const auto& clip = clipIt->second;
-
-                // Fire events for the initial frame (frame 0) on the first tick
-                if (ctrl.lastEventFrame == -1) {
-                    fireFrameEvents(entity, ctrl);
-                    ctrl.lastEventFrame = ctrl.currentFrame;
-                }
-
-                if (ctrl.finished) {
-                    // Still update the sprite to the held frame
-                    applyFrame(ctrl, clip, sprite);
-                    return;
-                }
-
-                float frameDuration = (clip.fps > 0.0f) ? (1.0f / clip.fps) : 1.0f;
-
-                ctrl.frameTimer += dt;
-
-                while (ctrl.frameTimer >= frameDuration && !ctrl.finished) {
-                    ctrl.frameTimer -= frameDuration;
-
-                    int prevFrame = ctrl.currentFrame;
-                    advanceFrame(ctrl, clip);
-
-                    // Fire events when the frame changes
-                    if (ctrl.currentFrame != prevFrame) {
-                        fireFrameEvents(entity, ctrl);
-                        ctrl.lastEventFrame = ctrl.currentFrame;
-                    }
-                }
-
-                applyFrame(ctrl, clip, sprite);
+            [dt](Entity entity, AnimationController& ctrl, Sprite& sprite) {
+                ctrl.tick(dt, entity, sprite);
             }
         );
-    }
-
-private:
-    /// Apply the current frame's source rect to the sprite
-    static void applyFrame(const AnimationController& ctrl,
-                           const AnimationClip& clip,
-                           Sprite& sprite) {
-        if (ctrl.currentFrame >= 0 &&
-            ctrl.currentFrame < static_cast<int>(clip.frames.size())) {
-            sprite.sourceRect = clip.frames[ctrl.currentFrame];
-        }
-    }
-
-    /// Advance to the next frame according to the clip's playback mode
-    static void advanceFrame(AnimationController& ctrl, const AnimationClip& clip) {
-        int frameCount = static_cast<int>(clip.frames.size());
-        if (frameCount <= 1) {
-            ctrl.finished = (clip.mode == PlaybackMode::Once);
-            return;
-        }
-
-        switch (clip.mode) {
-            case PlaybackMode::Loop:
-                ctrl.currentFrame = (ctrl.currentFrame + 1) % frameCount;
-                break;
-
-            case PlaybackMode::Once:
-                if (ctrl.currentFrame < frameCount - 1) {
-                    ctrl.currentFrame++;
-                } else {
-                    ctrl.finished = true;
-                }
-                break;
-
-            case PlaybackMode::PingPong:
-                if (!ctrl.pingPongReverse) {
-                    if (ctrl.currentFrame < frameCount - 1) {
-                        ctrl.currentFrame++;
-                    } else {
-                        ctrl.pingPongReverse = true;
-                        if (frameCount > 2) {
-                            ctrl.currentFrame--;
-                        }
-                    }
-                } else {
-                    if (ctrl.currentFrame > 0) {
-                        ctrl.currentFrame--;
-                    } else {
-                        ctrl.pingPongReverse = false;
-                        if (frameCount > 2) {
-                            ctrl.currentFrame++;
-                        }
-                    }
-                }
-                break;
-        }
-    }
-
-    /// Fire any registered callbacks for the controller's current frame
-    static void fireFrameEvents(Entity entity, AnimationController& ctrl) {
-        auto eventMapIt = ctrl.frameEvents.find(ctrl.currentClip);
-        if (eventMapIt == ctrl.frameEvents.end()) return;
-
-        auto frameIt = eventMapIt->second.find(ctrl.currentFrame);
-        if (frameIt == eventMapIt->second.end()) return;
-
-        for (auto& callback : frameIt->second) {
-            callback(entity);
-        }
     }
 };
 

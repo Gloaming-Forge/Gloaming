@@ -52,10 +52,15 @@ static Key parseKey(const std::string& name) {
     return Key::Space;
 }
 
-/// Helper: parse a PlaybackMode from Lua string
+/// Helper: parse a PlaybackMode from Lua string (case-insensitive)
 static PlaybackMode parsePlaybackMode(const std::string& mode) {
-    if (mode == "once")      return PlaybackMode::Once;
-    if (mode == "ping_pong" || mode == "pingpong") return PlaybackMode::PingPong;
+    // Lowercase the input for case-insensitive comparison
+    std::string lower;
+    lower.reserve(mode.size());
+    for (char c : mode) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    if (lower == "once")      return PlaybackMode::Once;
+    if (lower == "ping_pong" || lower == "pingpong") return PlaybackMode::PingPong;
     return PlaybackMode::Loop; // default
 }
 
@@ -588,7 +593,11 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         int frameWidth = opts.get_or("frame_width", 0);
         int frameHeight = opts.get_or("frame_height", 0);
 
-        // If frame dimensions are not specified, try to derive from the Sprite's texture
+        // If frame dimensions are not specified, try to derive from the Sprite's texture.
+        // Heuristic: width = textureWidth / frameCount, height = frameWidth (assumes
+        // square frames).  This works well for common sprite sheets where each frame is
+        // a square tile.  For non-square frames, callers should provide explicit
+        // frame_width / frame_height values.
         if ((frameWidth <= 0 || frameHeight <= 0) && registry.has<Sprite>(entity)) {
             auto& sprite = registry.get<Sprite>(entity);
             if (sprite.texture && sprite.texture->isValid()) {
@@ -596,9 +605,6 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
                     frameWidth = sprite.texture->getWidth() / frameCount;
                 }
                 if (frameHeight <= 0) {
-                    // Assume square frames if only width is known, or use texture height
-                    // divided by the largest row index + 1 we've seen.
-                    // Simple heuristic: use frameWidth if it looks reasonable, else full height.
                     frameHeight = frameWidth > 0 ? frameWidth : sprite.texture->getHeight();
                 }
             }
@@ -639,14 +645,13 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
     };
 
     // animation.current(entityId) -> string (clip name) or nil
-    animApi["current"] = [&engine](uint32_t entityId) -> sol::object {
+    animApi["current"] = [&engine, &lua](uint32_t entityId) -> sol::object {
         auto& registry = engine.getRegistry();
         Entity entity = static_cast<Entity>(entityId);
         if (!registry.valid(entity) || !registry.has<AnimationController>(entity)) return sol::nil;
         const auto& name = registry.get<AnimationController>(entity).getCurrentClipName();
         if (name.empty()) return sol::nil;
-        sol::state_view luaView = engine.getModLoader().getLuaBindings().getState();
-        return sol::make_object(luaView, name);
+        return sol::make_object(lua, name);
     };
 
     // animation.is_finished(entityId) -> bool

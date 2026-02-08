@@ -12,8 +12,10 @@ namespace gloaming {
 /// Named collision layer registry.
 ///
 /// Maps human-readable layer names (e.g. "player", "enemy") to bit positions
-/// within the 16-bit collision bitmask.  The registry is pre-populated with the
-/// engine's default layers; mods can register additional layers (bits 8-15).
+/// within a 32-bit collision bitmask (uint32_t).  The registry is pre-populated
+/// with the engine's default layers (bits 0-7); mods can register additional
+/// layers in bits 8-31.  By convention the first 16 bits are preferred to keep
+/// masks readable, but all 32 bits are valid.
 class CollisionLayerRegistry {
 public:
     CollisionLayerRegistry() {
@@ -34,10 +36,10 @@ public:
 
     /// Register (or re-register) a named layer at a specific bit position.
     /// @param name  Case-sensitive layer name
-    /// @param bit   Bit position (0-15)
+    /// @param bit   Bit position (0-31)
     /// @return true on success
     bool registerLayer(const std::string& name, int bit) {
-        if (bit < 0 || bit > 15) {
+        if (bit < 0 || bit > 31) {
             LOG_WARN("CollisionLayerRegistry: bit {} out of range for '{}'", bit, name);
             return false;
         }
