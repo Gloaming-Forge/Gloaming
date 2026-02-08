@@ -344,47 +344,6 @@ TEST(LifetimeTest, Expiration) {
 }
 
 // =============================================================================
-// Sprite Animation Tests
-// =============================================================================
-
-TEST(SpriteTest, AddAnimation) {
-    Sprite sprite;
-
-    std::vector<AnimationFrame> frames;
-    frames.push_back({Rect(0, 0, 32, 32), 0.1f});
-    frames.push_back({Rect(32, 0, 32, 32), 0.1f});
-    frames.push_back({Rect(64, 0, 32, 32), 0.1f});
-
-    sprite.addAnimation("walk", std::move(frames), true);
-
-    EXPECT_EQ(sprite.animations.size(), 1);
-    EXPECT_EQ(sprite.animations[0].name, "walk");
-    EXPECT_EQ(sprite.animations[0].frames.size(), 3);
-}
-
-TEST(SpriteTest, PlayAnimation) {
-    Sprite sprite;
-
-    std::vector<AnimationFrame> idleFrames;
-    idleFrames.push_back({Rect(0, 0, 32, 32), 0.1f});
-    sprite.addAnimation("idle", std::move(idleFrames), true);
-
-    std::vector<AnimationFrame> walkFrames;
-    walkFrames.push_back({Rect(32, 0, 32, 32), 0.1f});
-    sprite.addAnimation("walk", std::move(walkFrames), true);
-
-    EXPECT_TRUE(sprite.playAnimation("idle"));
-    EXPECT_EQ(sprite.currentAnimation, 0);
-    EXPECT_EQ(sprite.getCurrentAnimationName(), "idle");
-
-    EXPECT_TRUE(sprite.playAnimation("walk"));
-    EXPECT_EQ(sprite.currentAnimation, 1);
-    EXPECT_EQ(sprite.getCurrentAnimationName(), "walk");
-
-    EXPECT_FALSE(sprite.playAnimation("nonexistent"));
-}
-
-// =============================================================================
 // Entity Factory Tests
 // =============================================================================
 

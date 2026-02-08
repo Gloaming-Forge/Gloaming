@@ -24,46 +24,6 @@ public:
     }
 };
 
-/// System that updates sprite animations
-class AnimationSystem : public System {
-public:
-    AnimationSystem() : System("AnimationSystem", 10) {}
-
-    void update(float dt) override {
-        getRegistry().each<Sprite>([dt](Entity /*entity*/, Sprite& sprite) {
-            if (sprite.currentAnimation < 0 ||
-                sprite.currentAnimation >= static_cast<int>(sprite.animations.size())) {
-                return;
-            }
-
-            auto& anim = sprite.animations[sprite.currentAnimation];
-            if (anim.frames.empty()) return;
-
-            sprite.frameTimer += dt;
-
-            const auto& currentFrame = anim.frames[sprite.currentFrame];
-            if (sprite.frameTimer >= currentFrame.duration) {
-                sprite.frameTimer -= currentFrame.duration;
-                sprite.currentFrame++;
-
-                if (sprite.currentFrame >= static_cast<int>(anim.frames.size())) {
-                    if (anim.looping) {
-                        sprite.currentFrame = 0;
-                    } else {
-                        sprite.currentFrame = static_cast<int>(anim.frames.size()) - 1;
-                        sprite.animationFinished = true;
-                    }
-                }
-
-                // Update source rect from current animation frame
-                if (sprite.currentFrame < static_cast<int>(anim.frames.size())) {
-                    sprite.sourceRect = anim.frames[sprite.currentFrame].sourceRect;
-                }
-            }
-        });
-    }
-};
-
 /// System that destroys entities that have exceeded their lifetime
 class LifetimeSystem : public System {
 public:
@@ -217,7 +177,6 @@ private:
 inline void registerCoreSystems(SystemScheduler& scheduler) {
     // Update phase systems
     scheduler.addSystem<MovementSystem>(SystemPhase::Update);
-    scheduler.addSystem<AnimationSystem>(SystemPhase::Update);
     scheduler.addSystem<HealthSystem>(SystemPhase::Update);
     scheduler.addSystem<LightUpdateSystem>(SystemPhase::Update);
     scheduler.addSystem<LifetimeSystem>(SystemPhase::PostUpdate);

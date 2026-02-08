@@ -10,3 +10,5 @@
 #include "gameplay/StateMachine.hpp"
 #include "gameplay/DialogueSystem.hpp"
 #include "gameplay/TileLayers.hpp"
+#include "gameplay/SpriteAnimation.hpp"
+#include "gameplay/CollisionLayers.hpp"

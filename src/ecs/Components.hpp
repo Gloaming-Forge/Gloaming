@@ -40,20 +40,9 @@ struct Velocity {
     constexpr Velocity(float x, float y) : linear(x, y) {}
 };
 
-/// Animation frame data
-struct AnimationFrame {
-    Rect sourceRect;             // Region in texture atlas
-    float duration = 0.1f;       // Seconds per frame
-};
-
-/// Animation state
-struct Animation {
-    std::string name;
-    std::vector<AnimationFrame> frames;
-    bool looping = true;
-};
-
-/// Sprite component - visual representation
+/// Sprite component - visual representation.
+/// Animation is handled by the separate AnimationController component
+/// (see gameplay/SpriteAnimation.hpp).
 struct Sprite {
     const Texture* texture = nullptr;
     Rect sourceRect{0, 0, 0, 0};        // Region in texture (0,0,0,0 = entire texture)
@@ -63,13 +52,6 @@ struct Sprite {
     bool visible = true;
     bool flipX = false;
     bool flipY = false;
-
-    // Animation state
-    std::vector<Animation> animations;
-    int currentAnimation = -1;           // -1 = no animation
-    int currentFrame = 0;
-    float frameTimer = 0.0f;
-    bool animationFinished = false;
 
     Sprite() = default;
     explicit Sprite(const Texture* tex) : texture(tex) {
@@ -81,36 +63,6 @@ struct Sprite {
     Sprite(const Texture* tex, const Rect& src) : texture(tex), sourceRect(src) {}
     Sprite(const Texture* tex, const Rect& src, int renderLayer)
         : texture(tex), sourceRect(src), layer(renderLayer) {}
-
-    /// Add an animation
-    void addAnimation(const std::string& name, std::vector<AnimationFrame> frames, bool loop = true) {
-        animations.push_back({name, std::move(frames), loop});
-    }
-
-    /// Play an animation by name
-    bool playAnimation(const std::string& name) {
-        for (size_t i = 0; i < animations.size(); ++i) {
-            if (animations[i].name == name) {
-                if (static_cast<int>(i) != currentAnimation) {
-                    currentAnimation = static_cast<int>(i);
-                    currentFrame = 0;
-                    frameTimer = 0.0f;
-                    animationFinished = false;
-                }
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// Get current animation name (empty if none)
-    const std::string& getCurrentAnimationName() const {
-        static const std::string empty;
-        if (currentAnimation >= 0 && currentAnimation < static_cast<int>(animations.size())) {
-            return animations[currentAnimation].name;
-        }
-        return empty;
-    }
 };
 
 /// Collision layer flags (bitmask)

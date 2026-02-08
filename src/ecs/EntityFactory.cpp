@@ -1,4 +1,5 @@
 #include "ecs/EntityFactory.hpp"
+#include "gameplay/SpriteAnimation.hpp"
 #include "rendering/Texture.hpp"
 #include "engine/Log.hpp"
 
@@ -115,8 +116,8 @@ bool EntityFactory::registerFromJson(const nlohmann::json& json) {
             for (const auto& animJson : json["animations"]) {
                 EntityDefinition::AnimationDef animDef;
                 animDef.name = animJson.value("name", "default");
-                animDef.frameTime = animJson.value("frame_time", animJson.value("frameTime", 0.1f));
-                animDef.looping = animJson.value("loop", animJson.value("looping", true));
+                animDef.fps = animJson.value("fps", 10.0f);
+                animDef.mode = animJson.value("mode", "loop");
 
                 if (animJson.contains("frames")) {
                     for (const auto& frameJson : animJson["frames"]) {
@@ -269,24 +270,31 @@ void EntityFactory::applyDefinition(Registry& registry, Entity entity, const Ent
                 sprite.layer = *def.layer;
             }
 
-            // Add animations
-            for (const auto& animDef : def.animations) {
-                std::vector<AnimationFrame> frames;
-                for (const auto& rect : animDef.frames) {
-                    AnimationFrame frame;
-                    frame.sourceRect = rect;
-                    frame.duration = animDef.frameTime;
-                    frames.push_back(frame);
-                }
-                sprite.addAnimation(animDef.name, std::move(frames), animDef.looping);
-            }
-
-            // Start default animation
-            if (!def.defaultAnimation.empty()) {
-                sprite.playAnimation(def.defaultAnimation);
-            }
-
             registry.add<Sprite>(entity, std::move(sprite));
+
+            // Add animations via AnimationController (if any defined)
+            if (!def.animations.empty()) {
+                AnimationController ctrl;
+                for (const auto& animDef : def.animations) {
+                    AnimationClip clip;
+                    clip.frames = animDef.frames;
+                    clip.fps = animDef.fps;
+                    if (animDef.mode == "once")
+                        clip.mode = PlaybackMode::Once;
+                    else if (animDef.mode == "ping_pong" || animDef.mode == "pingpong")
+                        clip.mode = PlaybackMode::PingPong;
+                    else
+                        clip.mode = PlaybackMode::Loop;
+                    ctrl.addClip(animDef.name, std::move(clip));
+                }
+
+                // Start default animation
+                if (!def.defaultAnimation.empty()) {
+                    ctrl.play(def.defaultAnimation);
+                }
+
+                registry.add<AnimationController>(entity, std::move(ctrl));
+            }
         }
     } else if (def.layer || def.color) {
         // Create sprite even without texture (placeholder)

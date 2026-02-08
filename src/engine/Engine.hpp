@@ -23,6 +23,7 @@
 #include "gameplay/Pathfinding.hpp"
 #include "gameplay/DialogueSystem.hpp"
 #include "gameplay/TileLayers.hpp"
+#include "gameplay/CollisionLayers.hpp"
 
 #include <string>
 #include <memory>
@@ -76,6 +77,7 @@ public:
     Pathfinder& getPathfinder() { return m_pathfinder; }
     DialogueSystem& getDialogueSystem() { return m_dialogueSystem; }
     TileLayerManager& getTileLayerManager() { return m_tileLayers; }
+    CollisionLayerRegistry& getCollisionLayers() { return m_collisionLayers; }
 
 private:
     void processInput();
@@ -121,6 +123,7 @@ private:
     Pathfinder m_pathfinder;
     DialogueSystem m_dialogueSystem;
     TileLayerManager m_tileLayers;
+    CollisionLayerRegistry m_collisionLayers;
 
     bool m_running = false;
 };
