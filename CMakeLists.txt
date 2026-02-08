@@ -123,6 +123,8 @@ add_library(gloaming_engine STATIC
     src/mod/HotReload.cpp
     # Gameplay Systems (Stage 9)
     src/gameplay/GameplayLuaBindings.cpp
+    # Entity Spawning & Projectiles (Stage 11)
+    src/gameplay/EntityLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

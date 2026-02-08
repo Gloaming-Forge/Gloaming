@@ -255,14 +255,22 @@ struct NPCTag {
     std::string npcType;
 };
 
-/// Tag component for projectile entities
-struct ProjectileTag {
-    std::string projectileType;
+/// Projectile component — tracks projectile behavior, hits, and lifecycle
+struct Projectile {
     uint32_t ownerEntity = 0;            // Entity that fired this projectile
     float damage = 10.0f;
+    float speed = 400.0f;                // Initial speed (pixels/sec)
     float lifetime = 5.0f;               // Seconds until despawn
-    float age = 0.0f;                    // Current age
-    bool piercing = false;               // Can hit multiple enemies
+    float age = 0.0f;                    // Current age in seconds
+    int pierce = 0;                      // 0 = destroy on first hit, -1 = infinite, N = hits remaining
+    bool gravityAffected = false;        // Whether world gravity applies
+    bool autoRotate = true;              // Rotate sprite to face velocity direction
+    float maxDistance = 0.0f;            // Max travel distance (0 = unlimited)
+    Vec2 startPosition{0.0f, 0.0f};     // Where the projectile was spawned (for distance tracking)
+    uint32_t hitMask = 0;               // Which collision layers this projectile damages
+    bool alive = true;                   // Set to false to mark for destruction
+    bool hitTile = false;               // Set by collision callback when hitting a tile
+    std::vector<uint32_t> alreadyHit;   // Entity IDs already hit (for pierce)
 };
 
 /// Gravity-affected entity
