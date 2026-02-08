@@ -23,6 +23,7 @@ add_executable(gloaming_tests
     test_audio.cpp
     test_ui.cpp
     test_gameplay.cpp
+    test_entity_spawning.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

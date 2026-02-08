@@ -24,6 +24,8 @@
 #include "gameplay/DialogueSystem.hpp"
 #include "gameplay/TileLayers.hpp"
 #include "gameplay/CollisionLayers.hpp"
+#include "gameplay/EntitySpawning.hpp"
+#include "gameplay/ProjectileSystem.hpp"
 
 #include <string>
 #include <memory>
@@ -78,6 +80,7 @@ public:
     DialogueSystem& getDialogueSystem() { return m_dialogueSystem; }
     TileLayerManager& getTileLayerManager() { return m_tileLayers; }
     CollisionLayerRegistry& getCollisionLayers() { return m_collisionLayers; }
+    EntitySpawning& getEntitySpawning() { return m_entitySpawning; }
 
 private:
     void processInput();
@@ -124,6 +127,7 @@ private:
     DialogueSystem m_dialogueSystem;
     TileLayerManager m_tileLayers;
     CollisionLayerRegistry m_collisionLayers;
+    EntitySpawning m_entitySpawning;
 
     bool m_running = false;
 };

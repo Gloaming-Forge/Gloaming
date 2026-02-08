@@ -12,3 +12,5 @@
 #include "gameplay/TileLayers.hpp"
 #include "gameplay/SpriteAnimation.hpp"
 #include "gameplay/CollisionLayers.hpp"
+#include "gameplay/EntitySpawning.hpp"
+#include "gameplay/ProjectileSystem.hpp"

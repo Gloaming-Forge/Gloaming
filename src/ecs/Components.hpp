@@ -5,6 +5,7 @@
 #include "rendering/Texture.hpp"
 
 #include <string>
+#include <array>
 #include <vector>
 #include <cstdint>
 #include <cmath>
@@ -255,14 +256,40 @@ struct NPCTag {
     std::string npcType;
 };
 
-/// Tag component for projectile entities
-struct ProjectileTag {
-    std::string projectileType;
+/// Projectile component — tracks projectile behavior, hits, and lifecycle
+struct Projectile {
+    static constexpr size_t MaxAlreadyHit = 8;
+
     uint32_t ownerEntity = 0;            // Entity that fired this projectile
     float damage = 10.0f;
+    float speed = 400.0f;                // Initial speed (pixels/sec)
     float lifetime = 5.0f;               // Seconds until despawn
-    float age = 0.0f;                    // Current age
-    bool piercing = false;               // Can hit multiple enemies
+    float age = 0.0f;                    // Current age in seconds
+    int pierce = 0;                      // 0 = destroy on first hit, -1 = unlimited (up to MaxAlreadyHit), N>0 = N additional hits allowed after the first
+    bool gravityAffected = false;        // Whether world gravity applies
+    bool autoRotate = true;              // Rotate sprite to face velocity direction
+    float maxDistance = 0.0f;            // Max travel distance (0 = unlimited)
+    Vec2 startPosition{0.0f, 0.0f};     // Where the projectile was spawned (for distance tracking)
+    uint32_t hitMask = 0;               // Which collision layers this projectile damages
+    bool alive = true;                   // Set to false to mark for destruction
+    bool hitTile = false;               // Set by collision callback when hitting a tile
+    std::array<uint32_t, MaxAlreadyHit> alreadyHit{};  // Entity IDs already hit (for pierce)
+    uint8_t alreadyHitCount = 0;        // Number of valid entries in alreadyHit
+
+    /// Record a hit entity. Returns false if the buffer is full.
+    bool addHit(uint32_t entityId) {
+        if (alreadyHitCount >= MaxAlreadyHit) return false;
+        alreadyHit[alreadyHitCount++] = entityId;
+        return true;
+    }
+
+    /// Check if an entity was already hit
+    bool wasHit(uint32_t entityId) const {
+        for (uint8_t i = 0; i < alreadyHitCount; ++i) {
+            if (alreadyHit[i] == entityId) return true;
+        }
+        return false;
+    }
 };
 
 /// Gravity-affected entity

@@ -4,6 +4,7 @@
 #include "ecs/CoreSystems.hpp"
 #include "gameplay/Gameplay.hpp"
 #include "gameplay/GameplayLuaBindings.hpp"
+#include "gameplay/EntityLuaBindings.hpp"
 
 #include <raylib.h>
 
@@ -171,6 +172,13 @@ bool Engine::init(const std::string& configPath) {
         // Camera controller system
         m_systemScheduler.addSystem<CameraControllerSystem>(SystemPhase::PostUpdate);
 
+        // Projectile system (Stage 11) — runs after physics in Update phase
+        m_systemScheduler.addSystem<ProjectileSystem>(SystemPhase::Update);
+
+        // Initialize entity spawning helpers (Stage 11)
+        m_entitySpawning.setRegistry(&m_registry);
+        m_entitySpawning.setEntityFactory(&m_entityFactory);
+
         // Wire dialogue system to use InputActions for key rebinding support
         m_dialogueSystem.setInputActions(&m_inputActions);
 
@@ -180,7 +188,7 @@ bool Engine::init(const std::string& configPath) {
 
         LOG_INFO("Gameplay systems initialized (grid movement, state machine, camera controller, "
                  "pathfinding, dialogue, input actions, tile layers, animation controller, "
-                 "collision layers)");
+                 "collision layers, entity spawning, projectile system)");
     }
 
     // Initialize mod system
@@ -194,7 +202,17 @@ bool Engine::init(const std::string& configPath) {
             m_modLoader.getLuaBindings().getState(),
             *this, m_inputActions, m_pathfinder, m_dialogueSystem, m_tileLayers,
             m_collisionLayers);
-        LOG_INFO("Gameplay Lua APIs registered");
+
+        // Register entity and projectile Lua APIs (Stage 11)
+        auto* projSys = m_systemScheduler.getSystem<ProjectileSystem>();
+        if (projSys) {
+            bindEntityAPI(
+                m_modLoader.getLuaBindings().getState(),
+                *this, m_entitySpawning, *projSys, m_collisionLayers);
+        } else {
+            LOG_WARN("ProjectileSystem not found — entity/projectile Lua APIs will be unavailable");
+        }
+        LOG_INFO("Gameplay and entity Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -338,7 +356,7 @@ void Engine::render() {
                             m_renderer->getScreenHeight());
 
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.3.0 - Stage 10: Sprite Animation & Collision Layers", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.3.0 - Stage 11: Entity Spawning & Projectiles", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
