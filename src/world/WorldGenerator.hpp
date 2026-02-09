@@ -69,7 +69,11 @@ public:
 
     /// Get/set the world seed
     uint64_t getSeed() const { return m_seed; }
-    void setSeed(uint64_t seed) { m_seed = seed; }
+    void setSeed(uint64_t seed) {
+        m_seed = seed;
+        m_heightCache.clear();
+        m_heightCacheChunkX = INT32_MAX;
+    }
 
     /// Get/set configuration
     WorldGenConfig& getConfig() { return m_config; }

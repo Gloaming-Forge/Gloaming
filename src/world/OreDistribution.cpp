@@ -81,7 +81,8 @@ bool OreDistribution::canReplace(uint16_t tileId, const OreRule& rule) {
 }
 
 void OreDistribution::generateOres(Chunk& chunk, uint64_t seed,
-                                     const std::function<int(int worldX)>& surfaceHeightAt) const {
+                                     const std::function<int(int worldX)>& surfaceHeightAt,
+                                     const std::function<std::string(int worldX)>& getBiomeAt) const {
     int worldMinX = chunk.getWorldMinX();
     int worldMinY = chunk.getWorldMinY();
 
@@ -98,6 +99,16 @@ void OreDistribution::generateOres(Chunk& chunk, uint64_t seed,
         for (int localX = 0; localX < CHUNK_SIZE; ++localX) {
             int worldX = worldMinX + localX;
             int surfaceY = surfaceHeightAt(worldX);
+
+            // Check biome restriction per column
+            if (!rule.biomes.empty() && getBiomeAt) {
+                std::string biomeId = getBiomeAt(worldX);
+                bool biomeMatch = false;
+                for (const auto& b : rule.biomes) {
+                    if (b == biomeId) { biomeMatch = true; break; }
+                }
+                if (!biomeMatch) continue;
+            }
 
             for (int localY = 0; localY < CHUNK_SIZE; ++localY) {
                 int worldY = worldMinY + localY;
@@ -126,42 +137,6 @@ void OreDistribution::generateOres(Chunk& chunk, uint64_t seed,
                 // Place the ore tile
                 chunk.setTileId(localX, localY, rule.tileId, 0, Tile::FLAG_SOLID);
             }
-        }
-    }
-}
-
-void OreDistribution::placeVein(Chunk& chunk, int localX, int localY,
-                                  const OreRule& rule, uint64_t seed) const {
-    // Determine vein size
-    int range = rule.veinSizeMax - rule.veinSizeMin;
-    int veinSize = rule.veinSizeMin;
-    if (range > 0) {
-        float sizeNoise = Noise::noise2D(localX, localY, seed + 20000);
-        veinSize += static_cast<int>(sizeNoise * static_cast<float>(range));
-    }
-
-    // Place tiles in a roughly circular vein pattern
-    int placed = 0;
-    int cx = localX;
-    int cy = localY;
-
-    for (int i = 0; i < veinSize && placed < veinSize; ++i) {
-        if (Chunk::isValidLocalCoord(cx, cy)) {
-            Tile current = chunk.getTile(cx, cy);
-            if (canReplace(current.id, rule)) {
-                chunk.setTileId(cx, cy, rule.tileId, 0, Tile::FLAG_SOLID);
-                ++placed;
-            }
-        }
-
-        // Random walk for vein shape
-        float dirNoise = Noise::noise2D(cx + i, cy + i, seed + 30000 + static_cast<uint64_t>(i));
-        int dir = static_cast<int>(dirNoise * 4.0f);
-        switch (dir) {
-            case 0: cx++; break;
-            case 1: cx--; break;
-            case 2: cy++; break;
-            case 3: cy--; break;
         }
     }
 }

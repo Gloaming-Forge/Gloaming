@@ -24,24 +24,24 @@ void bindWorldGenAPI(sol::state& lua, Engine& engine, WorldGenerator& worldGen) 
                 std::vector<int> heights;
                 heights.reserve(CHUNK_SIZE);
                 try {
-                    sol::protected_function_result result = fn(chunkX, static_cast<double>(seed));
+                    // Pass seed as two 32-bit halves to avoid precision loss
+                    uint32_t seedHi = static_cast<uint32_t>(seed >> 32);
+                    uint32_t seedLo = static_cast<uint32_t>(seed & 0xFFFFFFFF);
+                    sol::protected_function_result result = fn(chunkX, seedLo, seedHi);
                     if (!result.valid()) {
                         sol::error err = result;
                         MOD_LOG_ERROR("worldgen terrain generator error: {}", err.what());
-                        // Return default heights
                         heights.assign(CHUNK_SIZE, 100);
                         return heights;
                     }
                     sol::table heightTable = result;
+                    // Detect indexing: try [1] first (Lua convention), fall back to [0]
+                    sol::optional<int> firstAt1 = heightTable[1];
+                    bool oneBased = firstAt1.has_value();
                     for (int x = 0; x < CHUNK_SIZE; ++x) {
-                        sol::optional<int> h = heightTable[x];
-                        if (h) {
-                            heights.push_back(*h);
-                        } else {
-                            // Try 1-based indexing
-                            sol::optional<int> h1 = heightTable[x + 1];
-                            heights.push_back(h1.value_or(100));
-                        }
+                        int key = oneBased ? (x + 1) : x;
+                        sol::optional<int> h = heightTable[key];
+                        heights.push_back(h.value_or(100));
                     }
                 } catch (const std::exception& e) {
                     MOD_LOG_ERROR("worldgen terrain generator exception: {}", e.what());
@@ -244,16 +244,40 @@ void bindWorldGenAPI(sol::state& lua, Engine& engine, WorldGenerator& worldGen) 
 
     // =========================================================================
     // worldgen.registerPass(name, priority, callback)
-    // callback(chunk_table, seed) -- chunk_table has set_tile(), get_tile(), etc.
+    // callback(chunk_handle, seed_lo, seed_hi) where chunk_handle provides:
+    //   chunk_handle.world_x, chunk_handle.world_y (world origin)
+    //   chunk_handle:get_tile(local_x, local_y) -> {id, variant, flags}
+    //   chunk_handle:set_tile(local_x, local_y, tile_id, variant, flags)
     // =========================================================================
-    wg["registerPass"] = [&worldGen](const std::string& name, int priority,
+    wg["registerPass"] = [&worldGen, &lua](const std::string& name, int priority,
                                       sol::function callback) {
         sol::function fn = callback;
         worldGen.registerPass(name, priority,
-            [fn](Chunk& chunk, uint64_t seed, const WorldGenConfig&) {
+            [fn, &lua](Chunk& chunk, uint64_t seed, const WorldGenConfig&) {
                 try {
-                    // Pass chunk info as a table (position, set_tile, get_tile)
-                    fn(chunk.getWorldMinX(), chunk.getWorldMinY(), static_cast<double>(seed));
+                    sol::table chunkHandle = lua.create_table();
+                    chunkHandle["world_x"] = chunk.getWorldMinX();
+                    chunkHandle["world_y"] = chunk.getWorldMinY();
+                    chunkHandle.set_function("get_tile",
+                        [&chunk, &lua](int lx, int ly) -> sol::table {
+                            Tile t = chunk.getTile(lx, ly);
+                            sol::table result = lua.create_table();
+                            result["id"] = t.id;
+                            result["variant"] = t.variant;
+                            result["flags"] = t.flags;
+                            return result;
+                        });
+                    chunkHandle.set_function("set_tile",
+                        [&chunk](int lx, int ly, uint16_t tileId,
+                                 sol::optional<uint8_t> variant,
+                                 sol::optional<uint8_t> flags) {
+                            chunk.setTileId(lx, ly, tileId,
+                                            variant.value_or(0),
+                                            flags.value_or(Tile::FLAG_SOLID));
+                        });
+                    uint32_t seedHi = static_cast<uint32_t>(seed >> 32);
+                    uint32_t seedLo = static_cast<uint32_t>(seed & 0xFFFFFFFF);
+                    fn(chunkHandle, seedLo, seedHi);
                 } catch (const std::exception& e) {
                     MOD_LOG_ERROR("worldgen pass error: {}", e.what());
                 }
@@ -263,14 +287,36 @@ void bindWorldGenAPI(sol::state& lua, Engine& engine, WorldGenerator& worldGen) 
 
     // =========================================================================
     // worldgen.registerDecorator(name, callback)
-    // callback(chunk_x, chunk_y, seed)
+    // callback(chunk_handle, seed_lo, seed_hi) -- same chunk_handle as passes
     // =========================================================================
-    wg["registerDecorator"] = [&worldGen](const std::string& name, sol::function callback) {
+    wg["registerDecorator"] = [&worldGen, &lua](const std::string& name, sol::function callback) {
         sol::function fn = callback;
         worldGen.registerDecorator(name,
-            [fn](Chunk& chunk, uint64_t seed) {
+            [fn, &lua](Chunk& chunk, uint64_t seed) {
                 try {
-                    fn(chunk.getWorldMinX(), chunk.getWorldMinY(), static_cast<double>(seed));
+                    sol::table chunkHandle = lua.create_table();
+                    chunkHandle["world_x"] = chunk.getWorldMinX();
+                    chunkHandle["world_y"] = chunk.getWorldMinY();
+                    chunkHandle.set_function("get_tile",
+                        [&chunk, &lua](int lx, int ly) -> sol::table {
+                            Tile t = chunk.getTile(lx, ly);
+                            sol::table result = lua.create_table();
+                            result["id"] = t.id;
+                            result["variant"] = t.variant;
+                            result["flags"] = t.flags;
+                            return result;
+                        });
+                    chunkHandle.set_function("set_tile",
+                        [&chunk](int lx, int ly, uint16_t tileId,
+                                 sol::optional<uint8_t> variant,
+                                 sol::optional<uint8_t> flags) {
+                            chunk.setTileId(lx, ly, tileId,
+                                            variant.value_or(0),
+                                            flags.value_or(Tile::FLAG_SOLID));
+                        });
+                    uint32_t seedHi = static_cast<uint32_t>(seed >> 32);
+                    uint32_t seedLo = static_cast<uint32_t>(seed & 0xFFFFFFFF);
+                    fn(chunkHandle, seedLo, seedHi);
                 } catch (const std::exception& e) {
                     MOD_LOG_ERROR("worldgen decorator error: {}", e.what());
                 }

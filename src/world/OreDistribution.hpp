@@ -69,19 +69,12 @@ public:
     /// @param chunk The chunk to place ores in
     /// @param seed The world seed
     /// @param surfaceHeightAt Function that returns surface height for a world X
+    /// @param getBiomeAt Function that returns biome ID for a world X (for biome filtering)
     void generateOres(Chunk& chunk, uint64_t seed,
-                      const std::function<int(int worldX)>& surfaceHeightAt) const;
+                      const std::function<int(int worldX)>& surfaceHeightAt,
+                      const std::function<std::string(int worldX)>& getBiomeAt = nullptr) const;
 
 private:
-    /// Place a single ore vein starting at a position within a chunk.
-    /// @param chunk The chunk to modify
-    /// @param localX Starting local X coordinate
-    /// @param localY Starting local Y coordinate
-    /// @param rule The ore rule to apply
-    /// @param seed Seed for deterministic vein shape
-    void placeVein(Chunk& chunk, int localX, int localY,
-                   const OreRule& rule, uint64_t seed) const;
-
     /// Check if a tile ID is in the replace list for a rule
     static bool canReplace(uint16_t tileId, const OreRule& rule);
 

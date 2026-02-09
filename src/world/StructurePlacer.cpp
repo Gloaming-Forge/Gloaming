@@ -59,7 +59,8 @@ uint32_t StructurePlacer::placementHash(int worldX, int worldY, uint64_t seed,
 
 bool StructurePlacer::isValidPlacement(const StructureTemplate& structure,
                                          int worldX, int worldY, int surfaceHeight,
-                                         const std::string& biomeId) const {
+                                         const std::string& biomeId,
+                                         const Chunk& chunk) const {
     // Check biome restriction
     if (!structure.biomes.empty()) {
         bool biomeMatch = false;
@@ -80,10 +81,42 @@ bool StructurePlacer::isValidPlacement(const StructureTemplate& structure,
             if (depth < structure.minDepth || depth > structure.maxDepth) return false;
             break;
         case StructurePlacement::Ceiling:
+            // Ceiling structures must be underground and need air below + solid above
             if (depth < structure.minDepth || depth > structure.maxDepth) return false;
             break;
         case StructurePlacement::Anywhere:
             break;
+    }
+
+    // Check needsGround: the tile directly below the origin must be solid
+    int chunkMinX = chunk.getWorldMinX();
+    int chunkMinY = chunk.getWorldMinY();
+    int localX = worldX - chunkMinX;
+    int localYBelow = (worldY + 1) - chunkMinY;
+    int localYAbove = (worldY - 1) - chunkMinY;
+    int localY = worldY - chunkMinY;
+
+    if (structure.needsGround) {
+        if (Chunk::isValidLocalCoord(localX, localYBelow)) {
+            Tile below = chunk.getTile(localX, localYBelow);
+            if (below.isEmpty()) return false;
+        }
+    }
+
+    // Check needsAir: the origin tile itself should be air (structure placed into open space)
+    if (structure.needsAir) {
+        if (Chunk::isValidLocalCoord(localX, localY)) {
+            Tile at = chunk.getTile(localX, localY);
+            if (!at.isEmpty()) return false;
+        }
+    }
+
+    // Ceiling-specific: needs solid tile above origin
+    if (structure.placement == StructurePlacement::Ceiling) {
+        if (Chunk::isValidLocalCoord(localX, localYAbove)) {
+            Tile above = chunk.getTile(localX, localYAbove);
+            if (above.isEmpty()) return false; // Need solid ceiling
+        }
     }
 
     return true;
@@ -109,7 +142,8 @@ void StructurePlacer::placeStructures(Chunk& chunk, uint64_t seed,
             int placeY = surfaceY;
             if (structure.placement == StructurePlacement::Surface) {
                 placeY = surfaceY; // Place at surface
-            } else if (structure.placement == StructurePlacement::Underground) {
+            } else if (structure.placement == StructurePlacement::Underground ||
+                       structure.placement == StructurePlacement::Ceiling) {
                 // Use noise to determine underground Y
                 float depthNoise = Noise::noise2D(worldX, 0, seed + 80000);
                 int depthRange = structure.maxDepth - structure.minDepth;
@@ -125,8 +159,8 @@ void StructurePlacer::placeStructures(Chunk& chunk, uint64_t seed,
             // Check biome
             std::string biomeId = getBiomeAt(worldX);
 
-            // Validate placement
-            if (!isValidPlacement(structure, worldX, placeY, surfaceY, biomeId)) continue;
+            // Validate placement (includes needsGround/needsAir/ceiling checks)
+            if (!isValidPlacement(structure, worldX, placeY, surfaceY, biomeId, chunk)) continue;
 
             // Place the structure
             placeAt(chunk, structure, worldX, placeY);

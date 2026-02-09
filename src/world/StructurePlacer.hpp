@@ -101,7 +101,8 @@ private:
     /// Check if a position is valid for a given structure
     bool isValidPlacement(const StructureTemplate& structure,
                           int worldX, int worldY, int surfaceHeight,
-                          const std::string& biomeId) const;
+                          const std::string& biomeId,
+                          const Chunk& chunk) const;
 
     /// Deterministic hash for structure placement decisions
     static uint32_t placementHash(int worldX, int worldY, uint64_t seed,

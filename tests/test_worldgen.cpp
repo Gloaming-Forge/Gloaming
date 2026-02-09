@@ -850,6 +850,8 @@ TEST(WorldGeneratorTest, StructureIntegration) {
     marker.placement = StructurePlacement::Surface;
     marker.chance = 1.0f;   // Always place
     marker.spacing = 1;     // Every position
+    marker.needsAir = false;  // Allow placing on solid surface tiles
+    marker.needsGround = false;
     marker.tiles.push_back({0, 0, 88, 0, Tile::FLAG_SOLID, true});
     gen.getStructurePlacer().registerStructure(marker);
 
@@ -903,6 +905,21 @@ TEST(WorldGeneratorTest, SeedChange) {
 
     gen.setSeed(100);
     EXPECT_EQ(gen.getSeed(), 100);
+}
+
+TEST(WorldGeneratorTest, SetSeedInvalidatesCache) {
+    WorldGenerator gen;
+    gen.init(42);
+
+    int h1 = gen.getSurfaceHeight(100);
+
+    // Change seed -- cached heights must be invalidated
+    gen.setSeed(999);
+
+    int h2 = gen.getSurfaceHeight(100);
+
+    // Different seeds should produce different heights (with very high probability)
+    EXPECT_NE(h1, h2);
 }
 
 TEST(WorldGeneratorTest, SubsystemAccess) {
@@ -985,4 +1002,204 @@ TEST(WorldGeneratorTest, FullPipelineIntegration) {
             }
         }
     }
+}
+
+// ============================================================================
+// Ore Biome Filtering Tests
+// ============================================================================
+
+TEST(OreDistributionTest, OreBiomeFiltering) {
+    OreDistribution ores;
+
+    // Ore restricted to "desert" biome only
+    OreRule desertOre;
+    desertOre.id = "desert_ore";
+    desertOre.tileId = 80;
+    desertOre.minDepth = 0;
+    desertOre.maxDepth = 500;
+    desertOre.frequency = 1.0f;
+    desertOre.noiseThreshold = 0.0f;
+    desertOre.replaceTiles = {3};
+    desertOre.biomes = {"desert"};
+    ores.registerOre(desertOre);
+
+    // Create a stone chunk at depth
+    ChunkPosition pos(0, 3);
+    Chunk chunk(pos);
+    Tile stone; stone.id = 3; stone.flags = Tile::FLAG_SOLID;
+    chunk.fill(stone);
+
+    auto surfaceAt = [](int) -> int { return 100; };
+
+    // All columns are "forest" biome -- ore should NOT appear
+    auto forestBiome = [](int) -> std::string { return "forest"; };
+    ores.generateOres(chunk, 42, surfaceAt, forestBiome);
+
+    int oreCount = 0;
+    for (int y = 0; y < CHUNK_SIZE; ++y) {
+        for (int x = 0; x < CHUNK_SIZE; ++x) {
+            if (chunk.getTile(x, y).id == 80) oreCount++;
+        }
+    }
+    EXPECT_EQ(oreCount, 0) << "Desert ore should not appear in forest biome";
+
+    // Reset chunk and try with desert biome
+    chunk.fill(stone);
+    auto desertBiome = [](int) -> std::string { return "desert"; };
+    ores.generateOres(chunk, 42, surfaceAt, desertBiome);
+
+    oreCount = 0;
+    for (int y = 0; y < CHUNK_SIZE; ++y) {
+        for (int x = 0; x < CHUNK_SIZE; ++x) {
+            if (chunk.getTile(x, y).id == 80) oreCount++;
+        }
+    }
+    EXPECT_GT(oreCount, 0) << "Desert ore should appear in desert biome";
+}
+
+TEST(OreDistributionTest, OreNoBiomeRestriction) {
+    OreDistribution ores;
+
+    // Ore with empty biomes list (no restriction)
+    OreRule anyOre;
+    anyOre.id = "any_ore";
+    anyOre.tileId = 81;
+    anyOre.minDepth = 0;
+    anyOre.maxDepth = 500;
+    anyOre.frequency = 0.9f;
+    anyOre.noiseThreshold = 0.1f;
+    anyOre.replaceTiles = {3};
+    anyOre.biomes = {}; // No restriction
+    ores.registerOre(anyOre);
+
+    ChunkPosition pos(0, 3);
+    Chunk chunk(pos);
+    Tile stone; stone.id = 3; stone.flags = Tile::FLAG_SOLID;
+    chunk.fill(stone);
+
+    auto surfaceAt = [](int) -> int { return 100; };
+    auto anyBiome = [](int) -> std::string { return "tundra"; };
+    ores.generateOres(chunk, 42, surfaceAt, anyBiome);
+
+    int oreCount = 0;
+    for (int y = 0; y < CHUNK_SIZE; ++y) {
+        for (int x = 0; x < CHUNK_SIZE; ++x) {
+            if (chunk.getTile(x, y).id == 81) oreCount++;
+        }
+    }
+    EXPECT_GT(oreCount, 0) << "Unrestricted ore should appear in any biome";
+}
+
+// ============================================================================
+// StructurePlacer needsGround/needsAir Tests
+// ============================================================================
+
+TEST(StructurePlacerTest, NeedsGroundEnforced) {
+    StructurePlacer placer;
+
+    // Structure that needs ground
+    StructureTemplate post;
+    post.id = "post";
+    post.placement = StructurePlacement::Surface;
+    post.chance = 1.0f;
+    post.spacing = 1;
+    post.needsGround = true;
+    post.needsAir = false;
+    post.tiles.push_back({0, 0, 30, 0, Tile::FLAG_SOLID, true});
+    placer.registerStructure(post);
+
+    // Create a chunk with some ground and some air
+    Chunk chunk(ChunkPosition(0, 0));
+    // Set a surface row at y=32: solid at y=33, air at y=32
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+        chunk.setTileId(x, 33, 3, 0, Tile::FLAG_SOLID); // Ground
+        // y=32 left as air (surface)
+    }
+
+    auto surfaceAt = [](int) -> int { return 32; };
+    auto biomeAt = [](int) -> std::string { return "plains"; };
+    placer.placeStructures(chunk, 42, surfaceAt, biomeAt);
+
+    // Posts should be placed at y=32 where there's ground below (y=33)
+    bool anyPlaced = false;
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+        if (chunk.getTile(x, 32).id == 30) {
+            anyPlaced = true;
+            // Verify ground exists below
+            EXPECT_NE(chunk.getTile(x, 33).id, 0)
+                << "Structure at x=" << x << " was placed without ground below";
+        }
+    }
+    // Should have placed at least some (chance=1.0)
+    EXPECT_TRUE(anyPlaced);
+}
+
+TEST(StructurePlacerTest, NeedsAirEnforced) {
+    StructurePlacer placer;
+
+    // Structure that needs air at its origin
+    StructureTemplate lantern;
+    lantern.id = "lantern";
+    lantern.placement = StructurePlacement::Surface;
+    lantern.chance = 1.0f;
+    lantern.spacing = 1;
+    lantern.needsGround = false;
+    lantern.needsAir = true;
+    lantern.tiles.push_back({0, 0, 40, 0, 0, true});
+    placer.registerStructure(lantern);
+
+    // Create a fully solid chunk (no air anywhere)
+    Chunk chunk(ChunkPosition(0, 0));
+    Tile stone; stone.id = 3; stone.flags = Tile::FLAG_SOLID;
+    chunk.fill(stone);
+
+    auto surfaceAt = [](int) -> int { return 32; };
+    auto biomeAt = [](int) -> std::string { return "plains"; };
+    placer.placeStructures(chunk, 42, surfaceAt, biomeAt);
+
+    // No lanterns should be placed because origin is solid (not air)
+    int lanternCount = 0;
+    for (int y = 0; y < CHUNK_SIZE; ++y) {
+        for (int x = 0; x < CHUNK_SIZE; ++x) {
+            if (chunk.getTile(x, y).id == 40) lanternCount++;
+        }
+    }
+    EXPECT_EQ(lanternCount, 0) << "Structures should not be placed where origin is solid";
+}
+
+// ============================================================================
+// Negative Coordinate Tests
+// ============================================================================
+
+TEST(WorldGeneratorTest, NegativeChunkCoordinates) {
+    WorldGenerator gen;
+    gen.init(42);
+
+    // Generate chunks at negative coordinates
+    ChunkPosition negPos(-3, -2);
+    Chunk chunk(negPos);
+    gen.generateChunk(chunk);
+
+    // Should generate content (above-surface chunks may be empty,
+    // but we can verify it ran without crashing)
+    // At negative Y chunks (above surface), terrain should be air
+    // Just verify no crashes
+    SUCCEED();
+}
+
+TEST(WorldGeneratorTest, NegativeWorldXSurfaceHeight) {
+    WorldGenerator gen;
+    gen.init(42);
+
+    // Surface heights at negative X should be deterministic and within range
+    for (int x = -200; x < 0; ++x) {
+        int h = gen.getSurfaceHeight(x);
+        EXPECT_GE(h, 100 - 40) << "x=" << x;
+        EXPECT_LE(h, 100 + 40) << "x=" << x;
+    }
+
+    // Deterministic
+    int h1 = gen.getSurfaceHeight(-100);
+    int h2 = gen.getSurfaceHeight(-100);
+    EXPECT_EQ(h1, h2);
 }
