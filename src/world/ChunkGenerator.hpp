@@ -43,6 +43,10 @@ public:
     /// Fractal noise in 2D
     static float fractalNoise2D(float x, float y, uint64_t seed, int octaves = 4, float persistence = 0.5f);
 
+    /// Public hash accessors for seeding sub-generators
+    static uint32_t hash_public(int x, uint64_t seed) { return hash(x, seed); }
+    static uint32_t hash2D_public(int x, int y, uint64_t seed) { return hash2D(x, y, seed); }
+
 private:
     /// Hash function for noise generation
     static uint32_t hash(int x, uint64_t seed);
