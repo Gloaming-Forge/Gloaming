@@ -124,7 +124,7 @@ bool StructurePlacer::isValidPlacement(const StructureTemplate& structure,
 
 void StructurePlacer::placeStructures(Chunk& chunk, uint64_t seed,
                                         const std::function<int(int worldX)>& surfaceHeightAt,
-                                        const std::function<std::string(int worldX)>& getBiomeAt) const {
+                                        const std::function<const std::string&(int worldX)>& getBiomeAt) const {
     int worldMinX = chunk.getWorldMinX();
     int worldMinY = chunk.getWorldMinY();
 
@@ -142,13 +142,32 @@ void StructurePlacer::placeStructures(Chunk& chunk, uint64_t seed,
             int placeY = surfaceY;
             if (structure.placement == StructurePlacement::Surface) {
                 placeY = surfaceY; // Place at surface
-            } else if (structure.placement == StructurePlacement::Underground ||
-                       structure.placement == StructurePlacement::Ceiling) {
+            } else if (structure.placement == StructurePlacement::Underground) {
                 // Use noise to determine underground Y
                 float depthNoise = Noise::noise2D(worldX, 0, seed + 80000);
                 int depthRange = structure.maxDepth - structure.minDepth;
                 placeY = surfaceY + structure.minDepth +
                          static_cast<int>(depthNoise * static_cast<float>(depthRange));
+            } else if (structure.placement == StructurePlacement::Ceiling) {
+                // Scan for a cave ceiling: solid tile directly above an air tile
+                int localX = worldX - worldMinX;
+                if (localX < 0 || localX >= CHUNK_SIZE) continue;
+
+                bool found = false;
+                for (int localY = 0; localY < CHUNK_SIZE - 1; ++localY) {
+                    int worldY = worldMinY + localY;
+                    int depth = worldY - surfaceY;
+                    if (depth < structure.minDepth || depth > structure.maxDepth) continue;
+
+                    Tile above = chunk.getTile(localX, localY);
+                    Tile below = chunk.getTile(localX, localY + 1);
+                    if (!above.isEmpty() && below.isEmpty()) {
+                        placeY = worldY + 1; // Place in the air below the ceiling
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) continue;
             }
 
             // Check if this position wants a structure (deterministic)
@@ -157,7 +176,7 @@ void StructurePlacer::placeStructures(Chunk& chunk, uint64_t seed,
             if (chance > structure.chance) continue;
 
             // Check biome
-            std::string biomeId = getBiomeAt(worldX);
+            const std::string& biomeId = getBiomeAt(worldX);
 
             // Validate placement (includes needsGround/needsAir/ceiling checks)
             if (!isValidPlacement(structure, worldX, placeY, surfaceY, biomeId, chunk)) continue;

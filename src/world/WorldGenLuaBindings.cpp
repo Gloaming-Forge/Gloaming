@@ -8,6 +8,38 @@
 
 namespace gloaming {
 
+/// Creates a Lua chunk_handle table for passing to mod callbacks.
+/// WARNING: The returned handle captures `chunk` by reference and is only
+/// valid for the duration of the enclosing callback invocation. Do not store
+/// the handle in Lua globals or upvalues that outlive the callback scope.
+static sol::table makeChunkHandle(sol::state& lua, Chunk& chunk) {
+    sol::table handle = lua.create_table();
+    handle["world_x"] = chunk.getWorldMinX();
+    handle["world_y"] = chunk.getWorldMinY();
+    handle.set_function("get_tile",
+        [&chunk, &lua](int lx, int ly) -> sol::object {
+            if (!Chunk::isValidLocalCoord(lx, ly)) {
+                return sol::make_object(lua, sol::lua_nil);
+            }
+            Tile t = chunk.getTile(lx, ly);
+            sol::table result = lua.create_table();
+            result["id"] = t.id;
+            result["variant"] = t.variant;
+            result["flags"] = t.flags;
+            return result;
+        });
+    handle.set_function("set_tile",
+        [&chunk](int lx, int ly, uint16_t tileId,
+                 sol::optional<uint8_t> variant,
+                 sol::optional<uint8_t> flags) {
+            if (!Chunk::isValidLocalCoord(lx, ly)) return;
+            chunk.setTileId(lx, ly, tileId,
+                            variant.value_or(0),
+                            flags.value_or(Tile::FLAG_SOLID));
+        });
+    return handle;
+}
+
 void bindWorldGenAPI(sol::state& lua, Engine& engine, WorldGenerator& worldGen) {
     auto wg = lua.create_named_table("worldgen");
 
@@ -143,7 +175,7 @@ void bindWorldGenAPI(sol::state& lua, Engine& engine, WorldGenerator& worldGen) 
 
     // =========================================================================
     // worldgen.registerOre(id, definition)
-    // definition = { tile_id, min_depth, max_depth, vein_size_min, vein_size_max,
+    // definition = { tile_id, min_depth, max_depth,
     //                frequency, noise_scale, noise_threshold, replace_tiles, biomes }
     // =========================================================================
     wg["registerOre"] = [&worldGen](const std::string& id, sol::table def) {
@@ -152,8 +184,6 @@ void bindWorldGenAPI(sol::state& lua, Engine& engine, WorldGenerator& worldGen) 
         rule.tileId = def.get_or<uint16_t>("tile_id", 0);
         rule.minDepth = def.get_or("min_depth", 0);
         rule.maxDepth = def.get_or("max_depth", 1000);
-        rule.veinSizeMin = def.get_or("vein_size_min", 3);
-        rule.veinSizeMax = def.get_or("vein_size_max", 8);
         rule.frequency = def.get_or("frequency", 0.1f);
         rule.noiseScale = def.get_or("noise_scale", 0.1f);
         rule.noiseThreshold = def.get_or("noise_threshold", 0.7f);
@@ -255,26 +285,7 @@ void bindWorldGenAPI(sol::state& lua, Engine& engine, WorldGenerator& worldGen) 
         worldGen.registerPass(name, priority,
             [fn, &lua](Chunk& chunk, uint64_t seed, const WorldGenConfig&) {
                 try {
-                    sol::table chunkHandle = lua.create_table();
-                    chunkHandle["world_x"] = chunk.getWorldMinX();
-                    chunkHandle["world_y"] = chunk.getWorldMinY();
-                    chunkHandle.set_function("get_tile",
-                        [&chunk, &lua](int lx, int ly) -> sol::table {
-                            Tile t = chunk.getTile(lx, ly);
-                            sol::table result = lua.create_table();
-                            result["id"] = t.id;
-                            result["variant"] = t.variant;
-                            result["flags"] = t.flags;
-                            return result;
-                        });
-                    chunkHandle.set_function("set_tile",
-                        [&chunk](int lx, int ly, uint16_t tileId,
-                                 sol::optional<uint8_t> variant,
-                                 sol::optional<uint8_t> flags) {
-                            chunk.setTileId(lx, ly, tileId,
-                                            variant.value_or(0),
-                                            flags.value_or(Tile::FLAG_SOLID));
-                        });
+                    sol::table chunkHandle = makeChunkHandle(lua, chunk);
                     uint32_t seedHi = static_cast<uint32_t>(seed >> 32);
                     uint32_t seedLo = static_cast<uint32_t>(seed & 0xFFFFFFFF);
                     fn(chunkHandle, seedLo, seedHi);
@@ -294,26 +305,7 @@ void bindWorldGenAPI(sol::state& lua, Engine& engine, WorldGenerator& worldGen) 
         worldGen.registerDecorator(name,
             [fn, &lua](Chunk& chunk, uint64_t seed) {
                 try {
-                    sol::table chunkHandle = lua.create_table();
-                    chunkHandle["world_x"] = chunk.getWorldMinX();
-                    chunkHandle["world_y"] = chunk.getWorldMinY();
-                    chunkHandle.set_function("get_tile",
-                        [&chunk, &lua](int lx, int ly) -> sol::table {
-                            Tile t = chunk.getTile(lx, ly);
-                            sol::table result = lua.create_table();
-                            result["id"] = t.id;
-                            result["variant"] = t.variant;
-                            result["flags"] = t.flags;
-                            return result;
-                        });
-                    chunkHandle.set_function("set_tile",
-                        [&chunk](int lx, int ly, uint16_t tileId,
-                                 sol::optional<uint8_t> variant,
-                                 sol::optional<uint8_t> flags) {
-                            chunk.setTileId(lx, ly, tileId,
-                                            variant.value_or(0),
-                                            flags.value_or(Tile::FLAG_SOLID));
-                        });
+                    sol::table chunkHandle = makeChunkHandle(lua, chunk);
                     uint32_t seedHi = static_cast<uint32_t>(seed >> 32);
                     uint32_t seedLo = static_cast<uint32_t>(seed & 0xFFFFFFFF);
                     fn(chunkHandle, seedLo, seedHi);

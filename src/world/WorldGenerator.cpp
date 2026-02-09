@@ -247,7 +247,7 @@ void WorldGenerator::generateOres(Chunk& chunk) const {
     auto surfaceHeightAt = [this](int worldX) -> int {
         return getSurfaceHeight(worldX);
     };
-    auto getBiomeAt = [this](int worldX) -> std::string {
+    auto getBiomeAt = [this](int worldX) -> const std::string& {
         return m_biomeSystem->getBiomeAt(worldX, m_seed).id;
     };
     m_oreDistribution->generateOres(chunk, m_seed, surfaceHeightAt, getBiomeAt);
@@ -257,7 +257,7 @@ void WorldGenerator::generateStructures(Chunk& chunk) const {
     auto surfaceHeightAt = [this](int worldX) -> int {
         return getSurfaceHeight(worldX);
     };
-    auto getBiomeAt = [this](int worldX) -> std::string {
+    auto getBiomeAt = [this](int worldX) -> const std::string& {
         return m_biomeSystem->getBiomeAt(worldX, m_seed).id;
     };
     m_structurePlacer->placeStructures(chunk, m_seed, surfaceHeightAt, getBiomeAt);

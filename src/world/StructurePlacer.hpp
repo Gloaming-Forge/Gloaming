@@ -90,7 +90,7 @@ public:
     /// @param getBiomeAt Function that returns biome ID for a world X
     void placeStructures(Chunk& chunk, uint64_t seed,
                          const std::function<int(int worldX)>& surfaceHeightAt,
-                         const std::function<std::string(int worldX)>& getBiomeAt) const;
+                         const std::function<const std::string&(int worldX)>& getBiomeAt) const;
 
     /// Place a specific structure at a world position in a chunk.
     /// Returns true if at least one tile was placed (origin must be in chunk).

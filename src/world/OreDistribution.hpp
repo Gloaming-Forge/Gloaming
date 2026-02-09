@@ -18,10 +18,6 @@ struct OreRule {
     int minDepth = 0;           // Minimum depth below surface
     int maxDepth = 1000;        // Maximum depth below surface
 
-    // Vein properties
-    int veinSizeMin = 3;        // Minimum tiles per vein
-    int veinSizeMax = 8;        // Maximum tiles per vein
-
     // Frequency: attempts per chunk column
     float frequency = 0.1f;     // Probability of a vein attempt per column
 
@@ -41,7 +37,7 @@ struct OreRule {
 /// Ore placement uses a combination of:
 ///   - Depth-based probability
 ///   - 2D noise thresholding (for natural-looking clusters)
-///   - Random vein generation (connected groups of ore tiles)
+///   - Frequency-based filtering
 class OreDistribution {
 public:
     OreDistribution() = default;
@@ -72,7 +68,7 @@ public:
     /// @param getBiomeAt Function that returns biome ID for a world X (for biome filtering)
     void generateOres(Chunk& chunk, uint64_t seed,
                       const std::function<int(int worldX)>& surfaceHeightAt,
-                      const std::function<std::string(int worldX)>& getBiomeAt = nullptr) const;
+                      const std::function<const std::string&(int worldX)>& getBiomeAt = nullptr) const;
 
 private:
     /// Check if a tile ID is in the replace list for a rule

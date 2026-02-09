@@ -1032,7 +1032,7 @@ TEST(OreDistributionTest, OreBiomeFiltering) {
     auto surfaceAt = [](int) -> int { return 100; };
 
     // All columns are "forest" biome -- ore should NOT appear
-    auto forestBiome = [](int) -> std::string { return "forest"; };
+    auto forestBiome = [s = std::string("forest")](int) -> const std::string& { return s; };
     ores.generateOres(chunk, 42, surfaceAt, forestBiome);
 
     int oreCount = 0;
@@ -1045,7 +1045,7 @@ TEST(OreDistributionTest, OreBiomeFiltering) {
 
     // Reset chunk and try with desert biome
     chunk.fill(stone);
-    auto desertBiome = [](int) -> std::string { return "desert"; };
+    auto desertBiome = [s = std::string("desert")](int) -> const std::string& { return s; };
     ores.generateOres(chunk, 42, surfaceAt, desertBiome);
 
     oreCount = 0;
@@ -1078,7 +1078,7 @@ TEST(OreDistributionTest, OreNoBiomeRestriction) {
     chunk.fill(stone);
 
     auto surfaceAt = [](int) -> int { return 100; };
-    auto anyBiome = [](int) -> std::string { return "tundra"; };
+    auto anyBiome = [s = std::string("tundra")](int) -> const std::string& { return s; };
     ores.generateOres(chunk, 42, surfaceAt, anyBiome);
 
     int oreCount = 0;
@@ -1117,7 +1117,7 @@ TEST(StructurePlacerTest, NeedsGroundEnforced) {
     }
 
     auto surfaceAt = [](int) -> int { return 32; };
-    auto biomeAt = [](int) -> std::string { return "plains"; };
+    auto biomeAt = [s = std::string("plains")](int) -> const std::string& { return s; };
     placer.placeStructures(chunk, 42, surfaceAt, biomeAt);
 
     // Posts should be placed at y=32 where there's ground below (y=33)
@@ -1154,7 +1154,7 @@ TEST(StructurePlacerTest, NeedsAirEnforced) {
     chunk.fill(stone);
 
     auto surfaceAt = [](int) -> int { return 32; };
-    auto biomeAt = [](int) -> std::string { return "plains"; };
+    auto biomeAt = [s = std::string("plains")](int) -> const std::string& { return s; };
     placer.placeStructures(chunk, 42, surfaceAt, biomeAt);
 
     // No lanterns should be placed because origin is solid (not air)
@@ -1202,4 +1202,106 @@ TEST(WorldGeneratorTest, NegativeWorldXSurfaceHeight) {
     int h1 = gen.getSurfaceHeight(-100);
     int h2 = gen.getSurfaceHeight(-100);
     EXPECT_EQ(h1, h2);
+}
+
+// ============================================================================
+// OreRule: veinSizeMin/veinSizeMax removed
+// ============================================================================
+
+TEST(OreDistributionTest, OreRuleNoVeinSizeFields) {
+    // After removing veinSizeMin/veinSizeMax, OreRule should compile
+    // with only the remaining fields
+    OreRule rule;
+    rule.id = "compact_ore";
+    rule.tileId = 90;
+    rule.minDepth = 10;
+    rule.maxDepth = 200;
+    rule.frequency = 0.5f;
+    rule.noiseScale = 0.1f;
+    rule.noiseThreshold = 0.6f;
+    rule.replaceTiles = {3};
+    rule.biomes = {};
+
+    OreDistribution ores;
+    EXPECT_TRUE(ores.registerOre(rule));
+    const OreRule* found = ores.getOre("compact_ore");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->frequency, 0.5f);
+}
+
+// ============================================================================
+// Ceiling Placement: scan for cave ceilings
+// ============================================================================
+
+TEST(StructurePlacerTest, CeilingPlacementScansForCave) {
+    StructurePlacer placer;
+
+    // Register a ceiling structure
+    StructureTemplate stalactite;
+    stalactite.id = "stalactite";
+    stalactite.placement = StructurePlacement::Ceiling;
+    stalactite.chance = 1.0f;
+    stalactite.spacing = 1;
+    stalactite.minDepth = 1;
+    stalactite.maxDepth = 500;
+    stalactite.needsGround = false;
+    stalactite.needsAir = true;
+    stalactite.tiles.push_back({0, 0, 55, 0, Tile::FLAG_SOLID, true});
+    placer.registerStructure(stalactite);
+
+    // Create a chunk with a cave: solid rows 0-20, air rows 21-40, solid rows 41-63
+    Chunk chunk(ChunkPosition(0, 2)); // worldMinY = 128
+    Tile stone; stone.id = 3; stone.flags = Tile::FLAG_SOLID;
+    chunk.fill(stone);
+    // Carve a cave (air) at localY 21-40
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+        for (int y = 21; y <= 40; ++y) {
+            chunk.setTileId(x, y, 0, 0, 0); // Air
+        }
+    }
+
+    auto surfaceAt = [](int) -> int { return 100; };
+    auto biomeAt = [s = std::string("plains")](int) -> const std::string& { return s; };
+    placer.placeStructures(chunk, 42, surfaceAt, biomeAt);
+
+    // Stalactites should be placed at localY=21 (air below solid at localY=20)
+    int stalactiteCount = 0;
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+        if (chunk.getTile(x, 21).id == 55) stalactiteCount++;
+    }
+    EXPECT_GT(stalactiteCount, 0) << "Ceiling structures should be placed at cave ceilings";
+}
+
+TEST(StructurePlacerTest, CeilingPlacementNoCave) {
+    StructurePlacer placer;
+
+    StructureTemplate stalactite;
+    stalactite.id = "stalactite";
+    stalactite.placement = StructurePlacement::Ceiling;
+    stalactite.chance = 1.0f;
+    stalactite.spacing = 1;
+    stalactite.minDepth = 1;
+    stalactite.maxDepth = 500;
+    stalactite.needsGround = false;
+    stalactite.needsAir = true;
+    stalactite.tiles.push_back({0, 0, 55, 0, Tile::FLAG_SOLID, true});
+    placer.registerStructure(stalactite);
+
+    // Fully solid chunk -- no caves at all
+    Chunk chunk(ChunkPosition(0, 2));
+    Tile stone; stone.id = 3; stone.flags = Tile::FLAG_SOLID;
+    chunk.fill(stone);
+
+    auto surfaceAt = [](int) -> int { return 100; };
+    auto biomeAt = [s = std::string("plains")](int) -> const std::string& { return s; };
+    placer.placeStructures(chunk, 42, surfaceAt, biomeAt);
+
+    // No stalactites should be placed (no cave ceiling exists)
+    int stalactiteCount = 0;
+    for (int y = 0; y < CHUNK_SIZE; ++y) {
+        for (int x = 0; x < CHUNK_SIZE; ++x) {
+            if (chunk.getTile(x, y).id == 55) stalactiteCount++;
+        }
+    }
+    EXPECT_EQ(stalactiteCount, 0) << "No ceiling structures in fully solid chunk";
 }

@@ -82,7 +82,7 @@ bool OreDistribution::canReplace(uint16_t tileId, const OreRule& rule) {
 
 void OreDistribution::generateOres(Chunk& chunk, uint64_t seed,
                                      const std::function<int(int worldX)>& surfaceHeightAt,
-                                     const std::function<std::string(int worldX)>& getBiomeAt) const {
+                                     const std::function<const std::string&(int worldX)>& getBiomeAt) const {
     int worldMinX = chunk.getWorldMinX();
     int worldMinY = chunk.getWorldMinY();
 
@@ -102,7 +102,7 @@ void OreDistribution::generateOres(Chunk& chunk, uint64_t seed,
 
             // Check biome restriction per column
             if (!rule.biomes.empty() && getBiomeAt) {
-                std::string biomeId = getBiomeAt(worldX);
+                const std::string& biomeId = getBiomeAt(worldX);
                 bool biomeMatch = false;
                 for (const auto& b : rule.biomes) {
                     if (b == biomeId) { biomeMatch = true; break; }
