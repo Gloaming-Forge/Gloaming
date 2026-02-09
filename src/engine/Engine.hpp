@@ -27,6 +27,7 @@
 #include "gameplay/EntitySpawning.hpp"
 #include "gameplay/ProjectileSystem.hpp"
 #include "world/WorldGenerator.hpp"
+#include "gameplay/CraftingSystem.hpp"
 
 #include <string>
 #include <memory>
@@ -86,6 +87,9 @@ public:
     // World generation accessors (Stage 12)
     WorldGenerator& getWorldGenerator() { return m_worldGenerator; }
 
+    // Gameplay loop accessors (Stage 13)
+    CraftingManager& getCraftingManager() { return m_craftingManager; }
+
 private:
     void processInput();
     void update(double dt);
@@ -135,6 +139,9 @@ private:
 
     // World generation (Stage 12)
     WorldGenerator m_worldGenerator;
+
+    // Gameplay loop (Stage 13)
+    CraftingManager m_craftingManager;
 
     bool m_running = false;
 };

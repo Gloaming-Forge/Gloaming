@@ -5,6 +5,8 @@
 #include "gameplay/Gameplay.hpp"
 #include "gameplay/GameplayLuaBindings.hpp"
 #include "gameplay/EntityLuaBindings.hpp"
+#include "gameplay/GameplayLoopSystems.hpp"
+#include "gameplay/GameplayLoopLuaBindings.hpp"
 #include "world/WorldGenLuaBindings.hpp"
 
 #include <raylib.h>
@@ -25,7 +27,7 @@ bool Engine::init(const std::string& configPath) {
         LOG_INFO("Configuration loaded from '{}'", configPath);
     }
 
-    LOG_INFO("Gloaming Engine v0.2.0 starting...");
+    LOG_INFO("Gloaming Engine v0.4.0 starting...");
 
     // Create window
     WindowConfig winCfg;
@@ -195,9 +197,20 @@ bool Engine::init(const std::string& configPath) {
         // from the renderer when tiles are registered. For now, use the renderer default.
         m_tileLayers.setTileSize(m_tileRenderer.getTileSize());
 
+        // Gameplay loop systems (Stage 13)
+        m_systemScheduler.addSystem<ItemDropSystem>(SystemPhase::Update);
+        m_systemScheduler.addSystem<ToolUseSystem>(SystemPhase::Update);
+        m_systemScheduler.addSystem<MeleeAttackSystem>(SystemPhase::Update);
+        m_systemScheduler.addSystem<CombatSystem>(SystemPhase::Update);
+
+        // Initialize crafting manager
+        m_craftingManager.setContentRegistry(&m_modLoader.getContentRegistry());
+        m_craftingManager.setTileMap(&m_tileMap);
+
         LOG_INFO("Gameplay systems initialized (grid movement, state machine, camera controller, "
                  "pathfinding, dialogue, input actions, tile layers, animation controller, "
-                 "collision layers, entity spawning, projectile system)");
+                 "collision layers, entity spawning, projectile system, "
+                 "item drops, tool use, melee attack, combat, crafting)");
     }
 
     // Initialize mod system
@@ -226,7 +239,12 @@ bool Engine::init(const std::string& configPath) {
             m_modLoader.getLuaBindings().getState(),
             *this, m_worldGenerator);
 
-        LOG_INFO("Gameplay, entity, and worldgen Lua APIs registered");
+        // Register gameplay loop Lua APIs (Stage 13)
+        bindGameplayLoopAPI(
+            m_modLoader.getLuaBindings().getState(),
+            *this, m_craftingManager);
+
+        LOG_INFO("Gameplay, entity, worldgen, and gameplay loop Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -370,7 +388,7 @@ void Engine::render() {
                             m_renderer->getScreenHeight());
 
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.3.0 - Stage 12: World Generation", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.4.0 - Stage 13: Gameplay Loop", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
