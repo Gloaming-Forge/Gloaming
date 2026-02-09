@@ -127,6 +127,12 @@ add_library(gloaming_engine STATIC
     src/gameplay/EntitySpawning.cpp
     src/gameplay/ProjectileSystem.cpp
     src/gameplay/EntityLuaBindings.cpp
+    # World Generation (Stage 12)
+    src/world/WorldGenerator.cpp
+    src/world/BiomeSystem.cpp
+    src/world/OreDistribution.cpp
+    src/world/StructurePlacer.cpp
+    src/world/WorldGenLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

@@ -26,6 +26,7 @@
 #include "gameplay/CollisionLayers.hpp"
 #include "gameplay/EntitySpawning.hpp"
 #include "gameplay/ProjectileSystem.hpp"
+#include "world/WorldGenerator.hpp"
 
 #include <string>
 #include <memory>
@@ -82,6 +83,9 @@ public:
     CollisionLayerRegistry& getCollisionLayers() { return m_collisionLayers; }
     EntitySpawning& getEntitySpawning() { return m_entitySpawning; }
 
+    // World generation accessors (Stage 12)
+    WorldGenerator& getWorldGenerator() { return m_worldGenerator; }
+
 private:
     void processInput();
     void update(double dt);
@@ -128,6 +132,9 @@ private:
     TileLayerManager m_tileLayers;
     CollisionLayerRegistry m_collisionLayers;
     EntitySpawning m_entitySpawning;
+
+    // World generation (Stage 12)
+    WorldGenerator m_worldGenerator;
 
     bool m_running = false;
 };

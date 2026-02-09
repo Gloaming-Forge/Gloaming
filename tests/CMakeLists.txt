@@ -24,6 +24,7 @@ add_executable(gloaming_tests
     test_ui.cpp
     test_gameplay.cpp
     test_entity_spawning.cpp
+    test_worldgen.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

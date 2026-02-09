@@ -5,6 +5,7 @@
 #include "gameplay/Gameplay.hpp"
 #include "gameplay/GameplayLuaBindings.hpp"
 #include "gameplay/EntityLuaBindings.hpp"
+#include "world/WorldGenLuaBindings.hpp"
 
 #include <raylib.h>
 
@@ -83,13 +84,16 @@ bool Engine::init(const std::string& configPath) {
     tileMapConfig.chunkManager.unloadRadiusChunks = 5;
     m_tileMap.setConfig(tileMapConfig);
 
+    // Initialize world generator (Stage 12)
+    uint64_t worldSeed = 42; // Demo seed, will be overridden if loading
+    m_worldGenerator.init(worldSeed);
+
     // For demo: create a test world
     std::string worldPath = "worlds/test_world";
     if (!m_tileMap.loadWorld(worldPath)) {
         // World doesn't exist, create it
-        uint64_t seed = 42;  // Demo seed
-        if (m_tileMap.createWorld(worldPath, "Test World", seed)) {
-            LOG_INFO("Created new test world with seed {}", seed);
+        if (m_tileMap.createWorld(worldPath, "Test World", worldSeed)) {
+            LOG_INFO("Created new test world with seed {}", worldSeed);
             // Set spawn point at surface level
             m_tileMap.setSpawnPoint(0.0f, 80.0f * m_tileRenderer.getTileSize());
         } else {
@@ -97,7 +101,12 @@ bool Engine::init(const std::string& configPath) {
         }
     } else {
         LOG_INFO("Loaded existing test world");
+        worldSeed = m_tileMap.getSeed();
+        m_worldGenerator.setSeed(worldSeed);
     }
+
+    // Wire the WorldGenerator as the chunk generation callback
+    m_tileMap.setGeneratorCallback(m_worldGenerator.asCallback());
 
     // Position camera at spawn point if world is loaded
     if (m_tileMap.isWorldLoaded()) {
@@ -212,7 +221,12 @@ bool Engine::init(const std::string& configPath) {
         } else {
             LOG_WARN("ProjectileSystem not found — entity/projectile Lua APIs will be unavailable");
         }
-        LOG_INFO("Gameplay and entity Lua APIs registered");
+        // Register world generation Lua APIs (Stage 12)
+        bindWorldGenAPI(
+            m_modLoader.getLuaBindings().getState(),
+            *this, m_worldGenerator);
+
+        LOG_INFO("Gameplay, entity, and worldgen Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -356,7 +370,7 @@ void Engine::render() {
                             m_renderer->getScreenHeight());
 
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.3.0 - Stage 11: Entity Spawning & Projectiles", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.3.0 - Stage 12: World Generation", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
