@@ -74,6 +74,8 @@ public:
 
     // Stats
     const EnemySpawnStats& getStats() const { return m_stats; }
+    void incrementKilled() { m_stats.totalKilled++; }
+    void incrementDespawned() { m_stats.totalDespawned++; }
 
     // Enemy count
     int getActiveEnemyCount();

@@ -1,4 +1,5 @@
 #include "gameplay/LootDropSystem.hpp"
+#include "gameplay/EnemySpawnSystem.hpp"
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
 #include "mod/ContentRegistry.hpp"
@@ -13,10 +14,19 @@ void LootDropSystem::init(Registry& registry, Engine& engine) {
     System::init(registry, engine);
     m_contentRegistry = &engine.getContentRegistry();
     m_eventBus = &engine.getEventBus();
+    m_enemySpawnSystem = engine.getEnemySpawnSystem();
+    m_viewMode = engine.getGameModeConfig().viewMode;
+}
+
+void LootDropSystem::shutdown() {
+    m_contentRegistry = nullptr;
+    m_eventBus = nullptr;
+    m_enemySpawnSystem = nullptr;
 }
 
 void LootDropSystem::update(float dt) {
     auto& registry = getRegistry();
+    m_viewMode = getEngine().getGameModeConfig().viewMode;
 
     // Find dead enemies to process
     std::vector<Entity> deadEnemies;
@@ -47,6 +57,11 @@ void LootDropSystem::update(float dt) {
             data.setFloat("x", transform.position.x);
             data.setFloat("y", transform.position.y);
             m_eventBus->emit("enemy_killed", data);
+        }
+
+        // Update kill stats
+        if (m_enemySpawnSystem) {
+            m_enemySpawnSystem->incrementKilled();
         }
 
         // Destroy the enemy entity
@@ -110,10 +125,6 @@ Entity LootDropSystem::spawnItemDropEntity(const std::string& itemId, int count,
     itemDrop.despawnTime = 300.0f;  // 5 minutes
     registry.add<ItemDrop>(drop, std::move(itemDrop));
 
-    // Add velocity (small upward pop for visual feedback)
-    std::uniform_real_distribution<float> velDist(-30.0f, 30.0f);
-    registry.add<Velocity>(drop, Vec2(velDist(m_rng), -60.0f));
-
     // Add collider for pickup detection
     Collider collider;
     collider.size = Vec2(8.0f, 8.0f);
@@ -121,8 +132,16 @@ Entity LootDropSystem::spawnItemDropEntity(const std::string& itemId, int count,
     collider.mask = CollisionLayer::Tile | CollisionLayer::Player;
     registry.add<Collider>(drop, collider);
 
-    // Gravity so the drop falls
-    registry.add<Gravity>(drop, 1.0f);
+    if (m_viewMode == ViewMode::SideView) {
+        // Side-view: upward pop + gravity for visual feedback
+        std::uniform_real_distribution<float> velDist(-30.0f, 30.0f);
+        registry.add<Velocity>(drop, Vec2(velDist(m_rng), -60.0f));
+        registry.add<Gravity>(drop, 1.0f);
+    } else {
+        // Top-down / flight: small random scatter, no gravity
+        std::uniform_real_distribution<float> scatterDist(-20.0f, 20.0f);
+        registry.add<Velocity>(drop, Vec2(scatterDist(m_rng), scatterDist(m_rng)));
+    }
 
     return drop;
 }

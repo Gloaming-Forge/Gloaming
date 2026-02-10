@@ -148,8 +148,9 @@ Vec2 EnemySpawnSystem::pickSpawnPosition(const Vec2& playerPos) {
 bool EnemySpawnSystem::isValidSpawnPosition(float x, float y) const {
     if (!m_tileMap) return true;
 
-    int tileX = static_cast<int>(std::floor(x / 16.0f));
-    int tileY = static_cast<int>(std::floor(y / 16.0f));
+    float tileSize = static_cast<float>(m_tileMap->getTileSize());
+    int tileX = static_cast<int>(std::floor(x / tileSize));
+    int tileY = static_cast<int>(std::floor(y / tileSize));
 
     // Don't spawn inside solid tiles
     Tile tile = m_tileMap->getTile(tileX, tileY);
@@ -307,6 +308,9 @@ Entity EnemySpawnSystem::createEnemyEntity(const std::string& enemyId, float x, 
     ai.despawnDistance = def->despawnDistance;
     ai.orbitDistance = def->orbitDistance;
     ai.orbitSpeed = def->orbitSpeed;
+    // Stagger initial target check to avoid all enemies scanning on the same frame
+    std::uniform_real_distribution<float> timerDist(0.0f, ai.targetCheckInterval);
+    ai.targetCheckTimer = timerDist(m_rng);
     registry.add<EnemyAI>(entity, std::move(ai));
 
     // Emit spawn event

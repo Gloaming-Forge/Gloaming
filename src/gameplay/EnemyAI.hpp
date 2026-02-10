@@ -16,7 +16,7 @@ namespace gloaming {
 /// |---------------|---------------|-----------------------------------------------|
 /// | patrol_walk   | Side-view     | Walk back and forth, reverse at ledges/walls   |
 /// | patrol_fly    | Side-view     | Fly in a sine-wave pattern                     |
-/// | patrol_path   | Top-down      | Follow a grid-based patrol route via pathfinding|
+/// | patrol_path   | Top-down      | Wander around home with random direction changes |
 /// | chase         | Any           | Move toward target when in detection range      |
 /// | flee          | Any           | Run from target when health is low              |
 /// | guard         | Any           | Stay near home, attack targets that enter range |

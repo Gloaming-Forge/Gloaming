@@ -3,6 +3,7 @@
 #include "ecs/Systems.hpp"
 #include "ecs/Components.hpp"
 #include "gameplay/EnemyAI.hpp"
+#include "gameplay/GameMode.hpp"
 
 #include <random>
 
@@ -11,6 +12,7 @@ namespace gloaming {
 // Forward declarations
 class ContentRegistry;
 class EventBus;
+class EnemySpawnSystem;
 
 /// System that monitors enemy deaths and spawns loot drops from their loot tables.
 ///
@@ -29,6 +31,7 @@ public:
 
     void init(Registry& registry, Engine& engine) override;
     void update(float dt) override;
+    void shutdown() override;
 
 private:
     /// Spawn item drops for a killed enemy
@@ -40,6 +43,8 @@ private:
 
     ContentRegistry* m_contentRegistry = nullptr;
     EventBus* m_eventBus = nullptr;
+    EnemySpawnSystem* m_enemySpawnSystem = nullptr;
+    ViewMode m_viewMode = ViewMode::SideView;
 
     std::mt19937 m_rng{std::random_device{}()};
 };

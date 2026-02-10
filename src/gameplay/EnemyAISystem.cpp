@@ -1,8 +1,8 @@
 #include "gameplay/EnemyAISystem.hpp"
+#include "gameplay/EnemySpawnSystem.hpp"
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
 #include "world/TileMap.hpp"
-#include "gameplay/Pathfinding.hpp"
 #include "mod/EventBus.hpp"
 
 #include <cmath>
@@ -12,8 +12,8 @@ namespace gloaming {
 void EnemyAISystem::init(Registry& registry, Engine& engine) {
     System::init(registry, engine);
     m_tileMap = &engine.getTileMap();
-    m_pathfinder = &engine.getPathfinder();
     m_eventBus = &engine.getEventBus();
+    m_enemySpawnSystem = engine.getEnemySpawnSystem();
     m_viewMode = engine.getGameModeConfig().viewMode;
 }
 
@@ -46,7 +46,7 @@ void EnemyAISystem::update(float dt) {
             return;
         }
 
-        // 2. Contact damage
+        // 2. Contact damage (with cooldown)
         checkContactDamage(entity, transform, ai);
 
         // 3. Target acquisition (periodic)
@@ -99,6 +99,9 @@ void EnemyAISystem::update(float dt) {
                 data.setString("reason", "despawn");
                 m_eventBus->emit("enemy_removed", data);
             }
+            if (m_enemySpawnSystem) {
+                m_enemySpawnSystem->incrementDespawned();
+            }
             registry.destroy(entity);
         }
     }
@@ -124,8 +127,9 @@ Entity EnemyAISystem::findNearestPlayer(const Vec2& position, float maxRange) {
 }
 
 void EnemyAISystem::checkContactDamage(Entity enemy, const Transform& enemyTransform,
-                                        const EnemyAI& ai) {
+                                        EnemyAI& ai) {
     if (ai.contactDamage <= 0) return;
+    if (ai.attackTimer > 0.0f) return; // Cooldown not elapsed
 
     auto& registry = getRegistry();
     if (!registry.has<Collider>(enemy)) return;
@@ -150,7 +154,10 @@ void EnemyAISystem::checkContactDamage(Entity enemy, const Transform& enemyTrans
 
         if (overlapping) {
             float dealt = playerHealth.takeDamage(static_cast<float>(ai.contactDamage));
-            if (dealt > 0.0f && m_eventBus) {
+            if (dealt > 0.0f) {
+                // Start cooldown after dealing damage
+                ai.attackTimer = ai.attackCooldown;
+
                 // Apply knockback away from enemy
                 if (registry.has<Velocity>(player)) {
                     auto& vel = registry.get<Velocity>(player);
@@ -163,11 +170,13 @@ void EnemyAISystem::checkContactDamage(Entity enemy, const Transform& enemyTrans
                     }
                 }
 
-                EventData data;
-                data.setInt("enemy", static_cast<int>(enemy));
-                data.setInt("player", static_cast<int>(player));
-                data.setFloat("damage", dealt);
-                m_eventBus->emit("enemy_contact_damage", data);
+                if (m_eventBus) {
+                    EventData data;
+                    data.setInt("enemy", static_cast<int>(enemy));
+                    data.setInt("player", static_cast<int>(player));
+                    data.setFloat("damage", dealt);
+                    m_eventBus->emit("enemy_contact_damage", data);
+                }
             }
         }
     });
@@ -178,15 +187,22 @@ bool EnemyAISystem::checkDespawn(Entity enemy, const Transform& transform,
     if (ai.despawnDistance <= 0.0f) return false;
 
     auto& registry = getRegistry();
-    float closestDistSq = ai.despawnDistance * ai.despawnDistance * 4.0f; // Start far
+
+    // Track whether any player was found
+    bool foundPlayer = false;
+    float closestDistSq = ai.despawnDistance * ai.despawnDistance * 4.0f;
 
     registry.each<PlayerTag, Transform>([&](Entity, const PlayerTag&,
                                               const Transform& playerTransform) {
+        foundPlayer = true;
         float dx = playerTransform.position.x - transform.position.x;
         float dy = playerTransform.position.y - transform.position.y;
         float distSq = dx * dx + dy * dy;
         if (distSq < closestDistSq) closestDistSq = distSq;
     });
+
+    // If no players exist, despawn immediately
+    if (!foundPlayer) return true;
 
     float despawnDistSq = ai.despawnDistance * ai.despawnDistance;
     if (closestDistSq > despawnDistSq) {
@@ -233,11 +249,12 @@ void EnemyAISystem::behaviorPatrolWalk(Entity entity, EnemyAI& ai, float dt) {
 
     velocity.linear.x = ai.moveSpeed * static_cast<float>(ai.patrolDirection);
 
-    // Check for wall ahead
+    // Check for wall ahead using tile map
     if (m_tileMap) {
+        float tileSize = static_cast<float>(m_tileMap->getTileSize());
         int tileX = static_cast<int>(std::floor(
-            (transform.position.x + static_cast<float>(ai.patrolDirection) * 16.0f) / 16.0f));
-        int tileY = static_cast<int>(std::floor(transform.position.y / 16.0f));
+            (transform.position.x + static_cast<float>(ai.patrolDirection) * tileSize) / tileSize));
+        int tileY = static_cast<int>(std::floor(transform.position.y / tileSize));
         Tile ahead = m_tileMap->getTile(tileX, tileY);
         if (ahead.isSolid()) {
             ai.patrolDirection = -ai.patrolDirection;
@@ -299,12 +316,14 @@ void EnemyAISystem::behaviorPatrolPath(Entity entity, EnemyAI& ai, float dt) {
     // For top-down games: wander around home using simple direction changes
     ai.patrolTimer -= dt;
     if (ai.patrolTimer <= 0.0f) {
-        // Pick a new random direction
-        ai.patrolTimer = 2.0f + static_cast<float>(std::rand() % 30) / 10.0f;
+        // Pick a new random direction using engine RNG
+        std::uniform_real_distribution<float> timerDist(2.0f, 5.0f);
+        ai.patrolTimer = timerDist(m_rng);
         ai.patrolDirection = (ai.patrolDirection + 1) % 4; // Cycle 0-3
 
         // Random chance to idle for a moment
-        if (std::rand() % 3 == 0) {
+        std::uniform_int_distribution<int> idleDist(0, 2);
+        if (idleDist(m_rng) == 0) {
             velocity.linear = Vec2(0.0f, 0.0f);
             return;
         }

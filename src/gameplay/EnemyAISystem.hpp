@@ -8,13 +8,14 @@
 #include <functional>
 #include <unordered_map>
 #include <string>
+#include <random>
 
 namespace gloaming {
 
 // Forward declarations
 class TileMap;
-class Pathfinder;
 class EventBus;
+class EnemySpawnSystem;
 
 /// Custom AI behavior callback registered by mods.
 /// Receives (entity, ai_component, dt) each frame.
@@ -28,7 +29,7 @@ using CustomAIBehavior = std::function<void(Entity, EnemyAI&, float)>;
 ///
 /// Processing order per entity per frame:
 ///   1. Despawn check (too far from player for too long)
-///   2. Contact damage check (player overlapping enemy)
+///   2. Contact damage check (player overlapping enemy, with cooldown)
 ///   3. Target acquisition (periodic scan for nearest player)
 ///   4. Behavior-specific logic (movement, attack decisions)
 ///   5. Health-based transitions (flee when low HP)
@@ -50,9 +51,9 @@ private:
     /// Find the nearest player to an entity
     Entity findNearestPlayer(const Vec2& position, float maxRange);
 
-    /// Apply contact damage when player overlaps enemy
+    /// Apply contact damage when player overlaps enemy (respects attackCooldown)
     void checkContactDamage(Entity enemy, const Transform& enemyTransform,
-                            const EnemyAI& ai);
+                            EnemyAI& ai);
 
     /// Handle despawn logic (distance from player)
     bool checkDespawn(Entity enemy, const Transform& transform, EnemyAI& ai, float dt);
@@ -68,7 +69,7 @@ private:
     /// PatrolFly: fly in a sine-wave pattern around home position
     void behaviorPatrolFly(Entity entity, EnemyAI& ai, float dt);
 
-    /// PatrolPath: follow A* path along patrol route (top-down games)
+    /// PatrolPath: wander around home position with random direction changes (top-down games)
     void behaviorPatrolPath(Entity entity, EnemyAI& ai, float dt);
 
     /// Chase: move toward target entity
@@ -88,12 +89,15 @@ private:
 
     // Subsystem references
     TileMap* m_tileMap = nullptr;
-    Pathfinder* m_pathfinder = nullptr;
     EventBus* m_eventBus = nullptr;
+    EnemySpawnSystem* m_enemySpawnSystem = nullptr;
     ViewMode m_viewMode = ViewMode::SideView;
 
     // Custom behaviors registered by mods
     std::unordered_map<std::string, CustomAIBehavior> m_customBehaviors;
+
+    // RNG for AI randomization (replaces std::rand)
+    std::mt19937 m_rng{std::random_device{}()};
 };
 
 } // namespace gloaming
