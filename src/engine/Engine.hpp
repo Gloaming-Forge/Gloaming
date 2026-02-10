@@ -28,6 +28,9 @@
 #include "gameplay/ProjectileSystem.hpp"
 #include "world/WorldGenerator.hpp"
 #include "gameplay/CraftingSystem.hpp"
+#include "gameplay/EnemySpawnSystem.hpp"
+#include "gameplay/EnemyAISystem.hpp"
+#include "gameplay/LootDropSystem.hpp"
 
 #include <string>
 #include <memory>
@@ -90,6 +93,10 @@ public:
     // Gameplay loop accessors (Stage 13)
     CraftingManager& getCraftingManager() { return m_craftingManager; }
 
+    // Enemy & AI accessors (Stage 14)
+    EnemySpawnSystem* getEnemySpawnSystem() { return m_enemySpawnSystem; }
+    EnemyAISystem* getEnemyAISystem() { return m_enemyAISystem; }
+
 private:
     void processInput();
     void update(double dt);
@@ -142,6 +149,10 @@ private:
 
     // Gameplay loop (Stage 13)
     CraftingManager m_craftingManager;
+
+    // Enemy & AI (Stage 14) — managed by SystemScheduler, raw pointers for access
+    EnemySpawnSystem* m_enemySpawnSystem = nullptr;
+    EnemyAISystem* m_enemyAISystem = nullptr;
 
     bool m_running = false;
 };

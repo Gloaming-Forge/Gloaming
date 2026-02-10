@@ -137,6 +137,11 @@ add_library(gloaming_engine STATIC
     src/gameplay/GameplayLoopSystems.cpp
     src/gameplay/CraftingSystem.cpp
     src/gameplay/GameplayLoopLuaBindings.cpp
+    # Enemies & AI (Stage 14)
+    src/gameplay/EnemySpawnSystem.cpp
+    src/gameplay/EnemyAISystem.cpp
+    src/gameplay/LootDropSystem.cpp
+    src/gameplay/EnemyLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

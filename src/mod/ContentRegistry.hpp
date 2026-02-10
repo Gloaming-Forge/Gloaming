@@ -172,6 +172,21 @@ struct EnemyDefinition {
     // Sounds
     std::string hurtSound;
     std::string deathSound;
+
+    // AI configuration (Stage 14)
+    std::string aiBehavior;              // Built-in behavior name (empty = auto-select by view mode)
+    float detectionRange = 200.0f;
+    float attackRange = 32.0f;
+    float moveSpeed = 60.0f;
+    float patrolRadius = 100.0f;
+    float fleeThreshold = 0.2f;         // Flee when health % drops below this
+    float despawnDistance = 1500.0f;     // Distance from player to despawn (0 = never)
+    float orbitDistance = 100.0f;        // For orbit behavior
+    float orbitSpeed = 2.0f;            // For orbit behavior
+
+    // Collider size (defaults to 16x16)
+    float colliderWidth = 16.0f;
+    float colliderHeight = 16.0f;
 };
 
 // ---------------------------------------------------------------------------

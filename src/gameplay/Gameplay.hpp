@@ -14,3 +14,7 @@
 #include "gameplay/CollisionLayers.hpp"
 #include "gameplay/EntitySpawning.hpp"
 #include "gameplay/ProjectileSystem.hpp"
+#include "gameplay/EnemyAI.hpp"
+#include "gameplay/EnemyAISystem.hpp"
+#include "gameplay/EnemySpawnSystem.hpp"
+#include "gameplay/LootDropSystem.hpp"

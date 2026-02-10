@@ -275,6 +275,26 @@ bool ContentRegistry::loadEnemiesFromJson(const nlohmann::json& json,
             enemy.deathSound = death.empty() ? "" : modDir + "/" + death;
         }
 
+        // AI configuration (Stage 14)
+        if (enemyJson.contains("ai") && enemyJson["ai"].is_object()) {
+            auto& aiJson = enemyJson["ai"];
+            enemy.aiBehavior = aiJson.value("behavior", "");
+            enemy.detectionRange = aiJson.value("detection_range", 200.0f);
+            enemy.attackRange = aiJson.value("attack_range", 32.0f);
+            enemy.moveSpeed = aiJson.value("move_speed", 60.0f);
+            enemy.patrolRadius = aiJson.value("patrol_radius", 100.0f);
+            enemy.fleeThreshold = aiJson.value("flee_threshold", 0.2f);
+            enemy.despawnDistance = aiJson.value("despawn_distance", 1500.0f);
+            enemy.orbitDistance = aiJson.value("orbit_distance", 100.0f);
+            enemy.orbitSpeed = aiJson.value("orbit_speed", 2.0f);
+        }
+
+        // Collider size
+        if (enemyJson.contains("collider") && enemyJson["collider"].is_object()) {
+            enemy.colliderWidth = enemyJson["collider"].value("width", 16.0f);
+            enemy.colliderHeight = enemyJson["collider"].value("height", 16.0f);
+        }
+
         registerEnemy(enemy);
         ++count;
     }
