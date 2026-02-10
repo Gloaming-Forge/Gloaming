@@ -27,7 +27,18 @@ void bindGameplayLoopAPI(sol::state& lua, Engine& engine,
             registry.add<Inventory>(entity);
         }
         auto& inv = registry.get<Inventory>(entity);
-        return inv.addItem(itemId, count, maxStack.value_or(999));
+
+        // Look up maxStack from item definition if not explicitly provided
+        int stack = 999;
+        if (maxStack) {
+            stack = maxStack.value();
+        } else {
+            const ItemDefinition* itemDef = engine.getContentRegistry().getItem(itemId);
+            if (itemDef) {
+                stack = itemDef->maxStack;
+            }
+        }
+        return inv.addItem(itemId, count, stack);
     };
 
     // inventory.remove(entityId, itemId, count) -> removedCount
@@ -336,31 +347,25 @@ void bindGameplayLoopAPI(sol::state& lua, Engine& engine,
         const TileContentDef* tileDef = contentRegistry.getTile(tileId);
         if (!tileDef) return false;
 
-        // Check if player has the placing item
+        // Check if player has the placing item (O(1) reverse lookup)
         if (registry.has<Inventory>(entity)) {
             auto& inv = registry.get<Inventory>(entity);
-            // Find an item that places this tile
-            auto itemIds = contentRegistry.getItemIds();
-            for (const auto& itemQId : itemIds) {
-                const ItemDefinition* itemDef = contentRegistry.getItem(itemQId);
-                if (itemDef && itemDef->placesTile == tileId) {
-                    if (inv.hasItem(itemQId, 1)) {
-                        inv.removeItem(itemQId, 1);
+            std::string placingItem = contentRegistry.getItemForTile(tileId);
+            if (!placingItem.empty() && inv.hasItem(placingItem, 1)) {
+                inv.removeItem(placingItem, 1);
 
-                        Tile newTile;
-                        newTile.id = tileDef->runtimeId;
-                        tileMap.setTile(tileX, tileY, newTile);
+                Tile newTile;
+                newTile.id = tileDef->runtimeId;
+                tileMap.setTile(tileX, tileY, newTile);
 
-                        EventData data;
-                        data.setInt("tile_x", tileX);
-                        data.setInt("tile_y", tileY);
-                        data.setString("tile_type", tileId);
-                        data.setInt("entity", static_cast<int>(entity));
-                        engine.getEventBus().emit("tile_placed", data);
+                EventData data;
+                data.setInt("tile_x", tileX);
+                data.setInt("tile_y", tileY);
+                data.setString("tile_type", tileId);
+                data.setInt("entity", static_cast<int>(entity));
+                engine.getEventBus().emit("tile_placed", data);
 
-                        return true;
-                    }
-                }
+                return true;
             }
         }
 
@@ -690,22 +695,14 @@ void bindGameplayLoopAPI(sol::state& lua, Engine& engine,
         Entity entity = static_cast<Entity>(entityId);
         if (!registry.valid(entity)) return;
 
-        if (registry.has<PlayerCombat>(entity)) {
+        if (registry.has<PlayerCombat>(entity) &&
+            registry.has<Health>(entity) &&
+            registry.has<Transform>(entity)) {
             auto& combat = registry.get<PlayerCombat>(entity);
-            combat.dead = false;
-            combat.respawnTimer = 0.0f;
+            auto& health = registry.get<Health>(entity);
+            auto& transform = registry.get<Transform>(entity);
 
-            if (registry.has<Health>(entity)) {
-                auto& health = registry.get<Health>(entity);
-                health.current = health.max;
-                health.invincibilityTime = 2.0f;
-            }
-            if (registry.has<Transform>(entity)) {
-                registry.get<Transform>(entity).position = combat.spawnPoint;
-            }
-            if (registry.has<Velocity>(entity)) {
-                registry.get<Velocity>(entity).linear = Vec2(0.0f, 0.0f);
-            }
+            performRespawn(combat, health, transform, registry, entity);
 
             EventData data;
             data.setInt("entity", static_cast<int>(entity));

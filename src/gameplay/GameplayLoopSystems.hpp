@@ -26,6 +26,7 @@ public:
 
 private:
     TileMap* m_tileMap = nullptr;
+    ContentRegistry* m_contentRegistry = nullptr;
     EventBus* m_eventBus = nullptr;
 };
 
@@ -75,5 +76,10 @@ public:
 private:
     EventBus* m_eventBus = nullptr;
 };
+
+/// Perform a respawn: restore health, teleport to spawn, reset velocity, clear death state.
+/// Shared by CombatSystem auto-respawn and the combat.respawn() Lua API.
+void performRespawn(PlayerCombat& combat, Health& health,
+                    Transform& transform, Registry& registry, Entity entity);
 
 } // namespace gloaming

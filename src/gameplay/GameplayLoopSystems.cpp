@@ -3,8 +3,6 @@
 #include "engine/Log.hpp"
 #include "world/TileMap.hpp"
 #include "mod/ContentRegistry.hpp"
-#include "physics/AABB.hpp"
-#include "physics/Collision.hpp"
 
 #include <cmath>
 
@@ -17,6 +15,7 @@ namespace gloaming {
 void ItemDropSystem::init(Registry& registry, Engine& engine) {
     System::init(registry, engine);
     m_tileMap = &engine.getTileMap();
+    m_contentRegistry = &engine.getContentRegistry();
     m_eventBus = &engine.getEventBus();
 }
 
@@ -59,9 +58,14 @@ void ItemDropSystem::update(float dt) {
 
             // Pickup range check
             if (distSq <= drop.pickupRadius * drop.pickupRadius) {
-                // Try to add to player inventory
+                // Try to add to player inventory, respecting item maxStack
                 auto& inventory = registry.get<Inventory>(player.entity);
-                int leftover = inventory.addItem(drop.itemId, drop.count);
+                int maxStack = 999;
+                if (m_contentRegistry) {
+                    const ItemDefinition* itemDef = m_contentRegistry->getItem(drop.itemId);
+                    if (itemDef) maxStack = itemDef->maxStack;
+                }
+                int leftover = inventory.addItem(drop.itemId, drop.count, maxStack);
 
                 if (leftover < drop.count) {
                     // At least some items were picked up
@@ -173,8 +177,9 @@ void MeleeAttackSystem::update(float dt) {
                                                 const Transform& transform) {
         melee.update(dt);
 
-        // Check for hits at the start of a swing (first frame only)
-        if (melee.swinging && melee.swingTimer <= dt) {
+        // Check for hits once per swing using a flag
+        if (melee.swinging && !melee.hitChecked) {
+            melee.hitChecked = true;
             swingers.push_back({entity, transform.position, &melee});
         }
     });
@@ -204,8 +209,9 @@ void MeleeAttackSystem::update(float dt) {
             float angleDiff = angleToTarget - aimAngle;
 
             // Normalize angle difference to [-180, 180]
-            while (angleDiff > 180.0f) angleDiff -= 360.0f;
-            while (angleDiff < -180.0f) angleDiff += 360.0f;
+            angleDiff = std::fmod(angleDiff + 180.0f, 360.0f);
+            if (angleDiff < 0.0f) angleDiff += 360.0f;
+            angleDiff -= 180.0f;
 
             if (std::abs(angleDiff) > halfArc) return;
 
@@ -265,15 +271,7 @@ void CombatSystem::update(float dt) {
         // Handle respawn timer
         if (combat.dead) {
             if (combat.updateRespawn(dt)) {
-                // Respawn: restore health and teleport to spawn
-                health.current = health.max;
-                health.invincibilityTime = 2.0f; // Brief invincibility after respawn
-                transform.position = combat.spawnPoint;
-
-                // Reset velocity if present
-                if (registry.has<Velocity>(entity)) {
-                    registry.get<Velocity>(entity).linear = Vec2(0.0f, 0.0f);
-                }
+                performRespawn(combat, health, transform, registry, entity);
 
                 EventData data;
                 data.setInt("entity", static_cast<int>(entity));
@@ -283,6 +281,18 @@ void CombatSystem::update(float dt) {
             }
         }
     });
+}
+
+void performRespawn(PlayerCombat& combat, Health& health,
+                    Transform& transform, Registry& registry, Entity entity) {
+    combat.dead = false;
+    combat.respawnTimer = 0.0f;
+    health.current = health.max;
+    health.invincibilityTime = 2.0f;
+    transform.position = combat.spawnPoint;
+    if (registry.has<Velocity>(entity)) {
+        registry.get<Velocity>(entity).linear = Vec2(0.0f, 0.0f);
+    }
 }
 
 } // namespace gloaming

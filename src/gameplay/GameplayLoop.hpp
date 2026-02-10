@@ -225,6 +225,7 @@ struct MeleeAttack {
     float swingDuration = 0.3f;      // How long the swing animation lasts
     float swingTimer = 0.0f;         // Current swing progress
     bool swinging = false;
+    bool hitChecked = false;         // Whether hit detection has run for this swing
     float swingAngle = 0.0f;         // Current visual angle of swing (degrees)
     Vec2 aimDirection{1.0f, 0.0f};   // Direction the player is aiming
 
@@ -239,6 +240,7 @@ struct MeleeAttack {
         cooldownTime = useTime;
         swingTimer = 0.0f;
         swinging = true;
+        hitChecked = false;
     }
 
     void update(float dt) {

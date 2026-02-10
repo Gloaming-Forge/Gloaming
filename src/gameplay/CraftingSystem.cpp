@@ -20,6 +20,25 @@ bool CraftingManager::canCraft(const std::string& recipeId, const Inventory& inv
         if (!isStationNearby(recipe->station, position)) return false;
     }
 
+    // Check that result can fit in inventory
+    int maxStack = 999;
+    const ItemDefinition* resultItemDef = m_contentRegistry->getItem(recipe->resultItem);
+    if (resultItemDef) {
+        maxStack = resultItemDef->maxStack;
+    }
+
+    int availableSpace = 0;
+    for (const auto& slot : inventory.slots) {
+        if (slot.isEmpty()) {
+            availableSpace += maxStack;
+        } else if (slot.matches(recipe->resultItem) && slot.count < maxStack) {
+            availableSpace += maxStack - slot.count;
+        }
+        if (availableSpace >= recipe->resultCount) break;
+    }
+
+    if (availableSpace < recipe->resultCount) return false;
+
     return true;
 }
 
@@ -48,27 +67,39 @@ CraftResult CraftingManager::craft(const std::string& recipeId, Inventory& inven
         return result;
     }
 
-    // Check if the result item can fit in inventory
-    // We look up the max stack from the item definition
+    // Look up the max stack from the item definition
     int maxStack = 999;
     const ItemDefinition* resultItemDef = m_contentRegistry->getItem(recipe->resultItem);
     if (resultItemDef) {
         maxStack = resultItemDef->maxStack;
     }
 
+    // Pre-check: verify the result can fit before consuming ingredients.
+    // Count available space for the result item in the inventory.
+    int availableSpace = 0;
+    for (const auto& slot : inventory.slots) {
+        if (slot.isEmpty()) {
+            availableSpace += maxStack;
+        } else if (slot.matches(recipe->resultItem) && slot.count < maxStack) {
+            availableSpace += maxStack - slot.count;
+        }
+        if (availableSpace >= recipe->resultCount) break;
+    }
+
+    if (availableSpace < recipe->resultCount) {
+        result.failReason = "inventory full";
+        return result;
+    }
+
     // Consume ingredients
     consumeIngredients(*recipe, inventory);
 
-    // Add result to inventory
-    int leftover = inventory.addItem(recipe->resultItem, recipe->resultCount, maxStack);
+    // Add result to inventory (guaranteed to fit from pre-check above)
+    inventory.addItem(recipe->resultItem, recipe->resultCount, maxStack);
 
     result.success = true;
     result.resultItem = recipe->resultItem;
-    result.resultCount = recipe->resultCount - leftover;
-
-    if (leftover > 0) {
-        LOG_WARN("Crafting '{}': {} items couldn't fit in inventory", recipeId, leftover);
-    }
+    result.resultCount = recipe->resultCount;
 
     return result;
 }
@@ -114,7 +145,7 @@ bool CraftingManager::isStationNearby(const std::string& stationTileId,
     uint16_t runtimeId = tileDef->runtimeId;
 
     // Search tiles in a square around the player position
-    int tileSize = 16; // default tile size
+    int tileSize = m_tileMap->getTileSize();
     int searchTiles = static_cast<int>(std::ceil(m_stationRadius / tileSize));
 
     int centerTileX = static_cast<int>(std::floor(position.x / tileSize));

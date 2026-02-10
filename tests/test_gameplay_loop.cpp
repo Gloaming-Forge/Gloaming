@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "gameplay/GameplayLoop.hpp"
+#include "gameplay/GameplayLoopSystems.hpp"
 #include "gameplay/CraftingSystem.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/Components.hpp"
@@ -1098,4 +1099,277 @@ TEST(CraftingNullSafetyTest, NullTileMap) {
     // No tile map — station checks should fail gracefully
 
     EXPECT_FALSE(crafting.isStationNearby("base:anvil", Vec2()));
+}
+
+// =============================================================================
+// Crafting Inventory Full Tests (Fix: pre-check capacity before consuming)
+// =============================================================================
+
+TEST(CraftingCapacityTest, RejectsWhenInventoryFull) {
+    ContentRegistry content;
+
+    ItemDefinition result;
+    result.id = "gold";
+    result.qualifiedId = "base:gold";
+    result.maxStack = 1;
+    content.registerItem(result);
+
+    ItemDefinition iron;
+    iron.id = "iron";
+    iron.qualifiedId = "base:iron";
+    content.registerItem(iron);
+
+    RecipeDefinition recipe;
+    recipe.id = "gold";
+    recipe.qualifiedId = "base:gold";
+    recipe.resultItem = "base:gold";
+    recipe.resultCount = 3;
+    recipe.ingredients.push_back({"base:iron", 1});
+    content.registerRecipe(recipe);
+
+    CraftingManager crafting;
+    crafting.setContentRegistry(&content);
+
+    Inventory inv;
+    inv.addItem("base:iron", 5);
+
+    // Fill remaining slots so only 2 empty slots left (slot 0 has iron)
+    // We need maxStack=1 for gold, so need 3 empty slots. Fill all but 2.
+    for (int i = 1; i < Inventory::MaxSlots; ++i) {
+        if (i < Inventory::MaxSlots - 1) {
+            inv.slots[static_cast<size_t>(i)].itemId = "filler_" + std::to_string(i);
+            inv.slots[static_cast<size_t>(i)].count = 1;
+        }
+    }
+    // Now only slot (MaxSlots-1) is empty = 1 empty slot, but we need 3 for maxStack=1
+    // Actually we need to be more precise. Let's simplify:
+
+    Inventory inv2;
+    // Fill ALL slots
+    for (int i = 0; i < Inventory::MaxSlots; ++i) {
+        inv2.slots[static_cast<size_t>(i)].itemId = "filler_" + std::to_string(i);
+        inv2.slots[static_cast<size_t>(i)].count = 1;
+    }
+    // Put iron in slot 0 so we have the ingredient
+    inv2.slots[0].itemId = "base:iron";
+    inv2.slots[0].count = 5;
+
+    // Inventory is full - no room for gold result
+    CraftResult craftResult = crafting.craft("base:gold", inv2, Vec2());
+    EXPECT_FALSE(craftResult.success);
+    EXPECT_EQ(craftResult.failReason, "inventory full");
+
+    // Ingredients should NOT be consumed
+    EXPECT_EQ(inv2.countItem("base:iron"), 5);
+}
+
+TEST(CraftingCapacityTest, CanCraftReturnsFalseWhenFull) {
+    ContentRegistry content;
+
+    ItemDefinition result;
+    result.id = "gold";
+    result.qualifiedId = "base:gold";
+    result.maxStack = 1;
+    content.registerItem(result);
+
+    ItemDefinition iron;
+    iron.id = "iron";
+    iron.qualifiedId = "base:iron";
+    content.registerItem(iron);
+
+    RecipeDefinition recipe;
+    recipe.id = "gold";
+    recipe.qualifiedId = "base:gold";
+    recipe.resultItem = "base:gold";
+    recipe.resultCount = 1;
+    recipe.ingredients.push_back({"base:iron", 1});
+    content.registerRecipe(recipe);
+
+    CraftingManager crafting;
+    crafting.setContentRegistry(&content);
+
+    Inventory inv;
+    // Fill all slots
+    for (int i = 0; i < Inventory::MaxSlots; ++i) {
+        inv.slots[static_cast<size_t>(i)].itemId = "filler_" + std::to_string(i);
+        inv.slots[static_cast<size_t>(i)].count = 1;
+    }
+    inv.slots[0].itemId = "base:iron";
+    inv.slots[0].count = 1;
+
+    // canCraft should also return false when inventory is full
+    EXPECT_FALSE(crafting.canCraft("base:gold", inv, Vec2()));
+}
+
+TEST(CraftingCapacityTest, SucceedsWhenSpaceAvailable) {
+    ContentRegistry content;
+
+    ItemDefinition result;
+    result.id = "gold";
+    result.qualifiedId = "base:gold";
+    result.maxStack = 10;
+    content.registerItem(result);
+
+    ItemDefinition iron;
+    iron.id = "iron";
+    iron.qualifiedId = "base:iron";
+    content.registerItem(iron);
+
+    RecipeDefinition recipe;
+    recipe.id = "gold";
+    recipe.qualifiedId = "base:gold";
+    recipe.resultItem = "base:gold";
+    recipe.resultCount = 5;
+    recipe.ingredients.push_back({"base:iron", 2});
+    content.registerRecipe(recipe);
+
+    CraftingManager crafting;
+    crafting.setContentRegistry(&content);
+
+    Inventory inv;
+    inv.addItem("base:iron", 2);
+    // Plenty of space
+
+    CraftResult craftResult = crafting.craft("base:gold", inv, Vec2());
+    EXPECT_TRUE(craftResult.success);
+    EXPECT_EQ(craftResult.resultCount, 5);
+    EXPECT_EQ(inv.countItem("base:gold"), 5);
+    EXPECT_EQ(inv.countItem("base:iron"), 0);
+}
+
+// =============================================================================
+// MeleeAttack hitChecked Flag Tests
+// =============================================================================
+
+TEST(MeleeAttackTest, HitCheckedFlag) {
+    MeleeAttack melee;
+    melee.startSwing(10.0f, 5.0f, 120.0f, 32.0f, 0.5f);
+
+    // hitChecked should be false at start of swing
+    EXPECT_FALSE(melee.hitChecked);
+
+    // Simulating what MeleeAttackSystem does:
+    melee.hitChecked = true;
+    EXPECT_TRUE(melee.hitChecked);
+
+    // On next update, hitChecked remains true (won't re-check)
+    melee.update(0.1f);
+    EXPECT_TRUE(melee.hitChecked);
+    EXPECT_TRUE(melee.swinging);
+
+    // After swing completes and a new swing starts, hitChecked resets
+    melee.update(0.5f); // complete swing
+    melee.update(0.5f); // clear cooldown
+    EXPECT_TRUE(melee.canAttack());
+
+    melee.startSwing(10.0f, 5.0f, 120.0f, 32.0f, 0.5f);
+    EXPECT_FALSE(melee.hitChecked);
+}
+
+// =============================================================================
+// ContentRegistry getItemForTile Reverse Lookup Tests
+// =============================================================================
+
+TEST(ContentRegistryTest, GetItemForTile) {
+    ContentRegistry content;
+
+    ItemDefinition dirtBlock;
+    dirtBlock.id = "dirt_block";
+    dirtBlock.qualifiedId = "base:dirt_block";
+    dirtBlock.placesTile = "base:dirt";
+    content.registerItem(dirtBlock);
+
+    ItemDefinition stoneBlock;
+    stoneBlock.id = "stone_block";
+    stoneBlock.qualifiedId = "base:stone_block";
+    stoneBlock.placesTile = "base:stone";
+    content.registerItem(stoneBlock);
+
+    ItemDefinition sword;
+    sword.id = "sword";
+    sword.qualifiedId = "base:sword";
+    // No placesTile
+    content.registerItem(sword);
+
+    EXPECT_EQ(content.getItemForTile("base:dirt"), "base:dirt_block");
+    EXPECT_EQ(content.getItemForTile("base:stone"), "base:stone_block");
+    EXPECT_EQ(content.getItemForTile("base:nonexistent"), "");
+}
+
+TEST(ContentRegistryTest, GetItemForTileUpdatesOnRegister) {
+    ContentRegistry content;
+
+    EXPECT_EQ(content.getItemForTile("base:dirt"), "");
+
+    ItemDefinition dirtBlock;
+    dirtBlock.id = "dirt_block";
+    dirtBlock.qualifiedId = "base:dirt_block";
+    dirtBlock.placesTile = "base:dirt";
+    content.registerItem(dirtBlock);
+
+    // Should find it after registering
+    EXPECT_EQ(content.getItemForTile("base:dirt"), "base:dirt_block");
+}
+
+// =============================================================================
+// performRespawn Helper Tests
+// =============================================================================
+
+TEST(PerformRespawnTest, RestoresStateCorrectly) {
+    Registry registry;
+
+    Entity player = registry.create(
+        Transform{Vec2(500, 300)},
+        Velocity{Vec2(100, -50)},
+        Health{100.0f}
+    );
+
+    PlayerCombat combat;
+    combat.spawnPoint = Vec2(50, 100);
+    combat.dead = true;
+    combat.respawnTimer = 1.5f;
+    registry.add<PlayerCombat>(player, combat);
+
+    auto& health = registry.get<Health>(player);
+    health.current = 0.0f;
+
+    auto& pc = registry.get<PlayerCombat>(player);
+    auto& transform = registry.get<Transform>(player);
+
+    performRespawn(pc, health, transform, registry, player);
+
+    EXPECT_FALSE(pc.dead);
+    EXPECT_FLOAT_EQ(pc.respawnTimer, 0.0f);
+    EXPECT_FLOAT_EQ(health.current, health.max);
+    EXPECT_FLOAT_EQ(health.invincibilityTime, 2.0f);
+    EXPECT_FLOAT_EQ(transform.position.x, 50.0f);
+    EXPECT_FLOAT_EQ(transform.position.y, 100.0f);
+    EXPECT_FLOAT_EQ(registry.get<Velocity>(player).linear.x, 0.0f);
+    EXPECT_FLOAT_EQ(registry.get<Velocity>(player).linear.y, 0.0f);
+}
+
+TEST(PerformRespawnTest, WorksWithoutVelocity) {
+    Registry registry;
+
+    Entity player = registry.create(
+        Transform{Vec2(500, 300)},
+        Health{100.0f}
+    );
+
+    PlayerCombat combat;
+    combat.spawnPoint = Vec2(0, 0);
+    combat.dead = true;
+    registry.add<PlayerCombat>(player, combat);
+
+    auto& health = registry.get<Health>(player);
+    health.current = 0.0f;
+
+    auto& pc = registry.get<PlayerCombat>(player);
+    auto& transform = registry.get<Transform>(player);
+
+    // Should not crash even without Velocity component
+    performRespawn(pc, health, transform, registry, player);
+
+    EXPECT_FALSE(pc.dead);
+    EXPECT_FLOAT_EQ(health.current, 100.0f);
 }
