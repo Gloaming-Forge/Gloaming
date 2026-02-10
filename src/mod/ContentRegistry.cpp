@@ -30,6 +30,7 @@ void ContentRegistry::registerItem(const ItemDefinition& def) {
         LOG_WARN("ContentRegistry: overwriting item '{}'", qid);
     }
     m_items[qid] = def;
+    m_tileToItemDirty = true;
     LOG_DEBUG("ContentRegistry: registered item '{}'", qid);
 }
 
@@ -423,6 +424,26 @@ void ContentRegistry::clear() {
     m_items.clear();
     m_enemies.clear();
     m_recipes.clear();
+    m_tileToItem.clear();
+    m_tileToItemDirty = true;
+}
+
+std::string ContentRegistry::getItemForTile(const std::string& tileId) const {
+    if (m_tileToItemDirty) {
+        rebuildTileItemLookup();
+    }
+    auto it = m_tileToItem.find(tileId);
+    return it != m_tileToItem.end() ? it->second : std::string{};
+}
+
+void ContentRegistry::rebuildTileItemLookup() const {
+    m_tileToItem.clear();
+    for (const auto& [qid, item] : m_items) {
+        if (!item.placesTile.empty()) {
+            m_tileToItem[item.placesTile] = qid;
+        }
+    }
+    m_tileToItemDirty = false;
 }
 
 } // namespace gloaming

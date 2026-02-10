@@ -259,6 +259,9 @@ public:
     /// Get recipes that produce a specific item
     std::vector<const RecipeDefinition*> getRecipesForItem(const std::string& itemId) const;
 
+    /// Get the item ID that places a given tile (reverse lookup). Returns empty string if none.
+    std::string getItemForTile(const std::string& tileId) const;
+
     // ---- Stats ----
 
     size_t tileCount() const { return m_tiles.size(); }
@@ -277,6 +280,11 @@ private:
     std::unordered_map<std::string, ItemDefinition> m_items;
     std::unordered_map<std::string, EnemyDefinition> m_enemies;
     std::unordered_map<std::string, RecipeDefinition> m_recipes;
+
+    /// Lazily built reverse lookup: tileId -> itemId (for items with placesTile)
+    mutable std::unordered_map<std::string, std::string> m_tileToItem;
+    mutable bool m_tileToItemDirty = true;
+    void rebuildTileItemLookup() const;
 };
 
 } // namespace gloaming
