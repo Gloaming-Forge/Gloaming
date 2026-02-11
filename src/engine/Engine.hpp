@@ -31,6 +31,9 @@
 #include "gameplay/EnemySpawnSystem.hpp"
 #include "gameplay/EnemyAISystem.hpp"
 #include "gameplay/LootDropSystem.hpp"
+#include "gameplay/NPCSystem.hpp"
+#include "gameplay/HousingSystem.hpp"
+#include "gameplay/ShopSystem.hpp"
 
 #include <string>
 #include <memory>
@@ -97,6 +100,11 @@ public:
     EnemySpawnSystem* getEnemySpawnSystem() { return m_enemySpawnSystem; }
     EnemyAISystem* getEnemyAISystem() { return m_enemyAISystem; }
 
+    // NPC, Housing & Shop accessors (Stage 15)
+    NPCSystem* getNPCSystem() { return m_npcSystem; }
+    HousingSystem* getHousingSystem() { return m_housingSystem; }
+    ShopManager& getShopManager() { return m_shopManager; }
+
 private:
     void processInput();
     void update(double dt);
@@ -153,6 +161,11 @@ private:
     // Enemy & AI (Stage 14) — managed by SystemScheduler, raw pointers for access
     EnemySpawnSystem* m_enemySpawnSystem = nullptr;
     EnemyAISystem* m_enemyAISystem = nullptr;
+
+    // NPC, Housing & Shops (Stage 15) — Systems managed by SystemScheduler, raw pointers for access
+    NPCSystem* m_npcSystem = nullptr;
+    HousingSystem* m_housingSystem = nullptr;
+    ShopManager m_shopManager;
 
     bool m_running = false;
 };

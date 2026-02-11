@@ -27,6 +27,7 @@ add_executable(gloaming_tests
     test_worldgen.cpp
     test_gameplay_loop.cpp
     test_enemies.cpp
+    test_npcs.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

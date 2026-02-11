@@ -190,6 +190,91 @@ struct EnemyDefinition {
 };
 
 // ---------------------------------------------------------------------------
+// NPC Definition (Stage 15)
+// ---------------------------------------------------------------------------
+
+struct NPCAnimationDef {
+    std::string name;
+    std::vector<int> frames;
+    int fps = 8;
+};
+
+struct NPCDefinition {
+    std::string id;
+    std::string qualifiedId;
+    std::string name;
+    std::string texturePath;
+
+    std::vector<NPCAnimationDef> animations;
+
+    // AI configuration
+    std::string aiBehavior = "idle";     // idle, wander, schedule, stationed
+    float moveSpeed = 40.0f;
+    float wanderRadius = 80.0f;
+    float interactionRange = 48.0f;
+
+    // Dialogue reference
+    std::string dialogueId;              // References a DialogueTreeDef
+
+    // Shop reference
+    std::string shopId;                  // References a ShopDefinition (empty = no shop)
+
+    // Housing
+    bool requiresHousing = true;
+
+    // Collider
+    float colliderWidth = 16.0f;
+    float colliderHeight = 16.0f;
+};
+
+// ---------------------------------------------------------------------------
+// Dialogue Tree Definition (Stage 15)
+// ---------------------------------------------------------------------------
+
+struct DialogueChoiceDef {
+    std::string text;
+    std::string nextNodeId;              // Empty = end dialogue
+};
+
+struct DialogueNodeDef {
+    std::string id;
+    std::string speaker;
+    std::string text;
+    std::string portraitId;
+    std::vector<DialogueChoiceDef> choices;
+    std::string nextNodeId;              // Auto-advance (if no choices)
+};
+
+struct DialogueTreeDef {
+    std::string id;
+    std::string qualifiedId;
+    std::string greetingNodeId;          // Starting node ID
+    std::vector<DialogueNodeDef> nodes;
+};
+
+// ---------------------------------------------------------------------------
+// Shop Definition (Stage 15)
+// ---------------------------------------------------------------------------
+
+struct ShopItemEntry {
+    std::string itemId;                  // Content-registry qualified item ID
+    int buyPrice = 10;                   // Cost to buy from shop
+    int sellPrice = 5;                   // Price shop pays for this item
+    int stock = -1;                      // -1 = infinite
+    bool available = true;
+};
+
+struct ShopDefinition {
+    std::string id;
+    std::string qualifiedId;
+    std::string name;
+    std::vector<ShopItemEntry> items;
+    float buyMultiplier = 1.0f;          // Price modifier for buying
+    float sellMultiplier = 0.5f;         // Sell ratio
+    std::string currencyItem = "base:coins"; // Item used as currency
+};
+
+// ---------------------------------------------------------------------------
 // Recipe Definition
 // ---------------------------------------------------------------------------
 
@@ -233,6 +318,15 @@ public:
     /// Register a recipe definition.
     void registerRecipe(const RecipeDefinition& def);
 
+    /// Register an NPC definition (Stage 15).
+    void registerNPC(const NPCDefinition& def);
+
+    /// Register a dialogue tree definition (Stage 15).
+    void registerDialogueTree(const DialogueTreeDef& def);
+
+    /// Register a shop definition (Stage 15).
+    void registerShop(const ShopDefinition& def);
+
     // ---- Bulk loading from JSON ----
 
     /// Load tile definitions from a JSON file. modId is used for namespacing.
@@ -250,6 +344,16 @@ public:
     /// Load recipe definitions from JSON.
     bool loadRecipesFromJson(const nlohmann::json& json, const std::string& modId);
 
+    /// Load NPC definitions from JSON (Stage 15).
+    bool loadNPCsFromJson(const nlohmann::json& json, const std::string& modId,
+                          const std::string& modDir);
+
+    /// Load dialogue tree definitions from JSON (Stage 15).
+    bool loadDialogueFromJson(const nlohmann::json& json, const std::string& modId);
+
+    /// Load shop definitions from JSON (Stage 15).
+    bool loadShopsFromJson(const nlohmann::json& json, const std::string& modId);
+
     // ---- Queries ----
 
     const TileContentDef* getTile(const std::string& qualifiedId) const;
@@ -257,16 +361,24 @@ public:
     const ItemDefinition* getItem(const std::string& qualifiedId) const;
     const EnemyDefinition* getEnemy(const std::string& qualifiedId) const;
     const RecipeDefinition* getRecipe(const std::string& qualifiedId) const;
+    const NPCDefinition* getNPC(const std::string& qualifiedId) const;
+    const DialogueTreeDef* getDialogueTree(const std::string& qualifiedId) const;
+    const ShopDefinition* getShop(const std::string& qualifiedId) const;
 
     bool hasTile(const std::string& qualifiedId) const;
     bool hasItem(const std::string& qualifiedId) const;
     bool hasEnemy(const std::string& qualifiedId) const;
+    bool hasNPC(const std::string& qualifiedId) const;
+    bool hasShop(const std::string& qualifiedId) const;
+    bool hasDialogueTree(const std::string& qualifiedId) const;
 
     /// Get all tile IDs
     std::vector<std::string> getTileIds() const;
     std::vector<std::string> getItemIds() const;
     std::vector<std::string> getEnemyIds() const;
     std::vector<std::string> getRecipeIds() const;
+    std::vector<std::string> getNPCIds() const;
+    std::vector<std::string> getShopIds() const;
 
     /// Get recipes by category
     std::vector<const RecipeDefinition*> getRecipesByCategory(const std::string& category) const;
@@ -277,12 +389,20 @@ public:
     /// Get the item ID that places a given tile (reverse lookup). Returns empty string if none.
     std::string getItemForTile(const std::string& tileId) const;
 
+    // ---- Validation ----
+
+    /// Validate that NPC dialogue/shop references exist. Call after all content is loaded.
+    /// Logs warnings for any broken references.
+    void validateNPCReferences() const;
+
     // ---- Stats ----
 
     size_t tileCount() const { return m_tiles.size(); }
     size_t itemCount() const { return m_items.size(); }
     size_t enemyCount() const { return m_enemies.size(); }
     size_t recipeCount() const { return m_recipes.size(); }
+    size_t npcCount() const { return m_npcs.size(); }
+    size_t shopCount() const { return m_shops.size(); }
 
     /// Clear all registered content
     void clear();
@@ -295,6 +415,11 @@ private:
     std::unordered_map<std::string, ItemDefinition> m_items;
     std::unordered_map<std::string, EnemyDefinition> m_enemies;
     std::unordered_map<std::string, RecipeDefinition> m_recipes;
+
+    // Stage 15
+    std::unordered_map<std::string, NPCDefinition> m_npcs;
+    std::unordered_map<std::string, DialogueTreeDef> m_dialogueTrees;
+    std::unordered_map<std::string, ShopDefinition> m_shops;
 
     /// Lazily built reverse lookup: tileId -> itemId (for items with placesTile)
     mutable std::unordered_map<std::string, std::string> m_tileToItem;
