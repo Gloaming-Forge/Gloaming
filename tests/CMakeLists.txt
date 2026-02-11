@@ -28,6 +28,7 @@ add_executable(gloaming_tests
     test_gameplay_loop.cpp
     test_enemies.cpp
     test_npcs.cpp
+    test_scenes_timers_save.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

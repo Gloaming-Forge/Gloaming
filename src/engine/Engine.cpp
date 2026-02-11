@@ -9,6 +9,7 @@
 #include "gameplay/GameplayLoopLuaBindings.hpp"
 #include "gameplay/EnemyLuaBindings.hpp"
 #include "gameplay/NPCLuaBindings.hpp"
+#include "gameplay/SceneTimerSaveLuaBindings.hpp"
 #include "world/WorldGenLuaBindings.hpp"
 
 #include <raylib.h>
@@ -220,12 +221,23 @@ bool Engine::init(const std::string& configPath) {
         m_shopManager.setContentRegistry(&m_modLoader.getContentRegistry());
         m_shopManager.setEventBus(&m_modLoader.getEventBus());
 
+        // Scene, Timer & Save systems (Stage 16)
+        m_sceneManager.init(*this);
+        // TimerSystem and SaveSystem don't need engine-level init() — they're configured later
+
+        // Wire save system to world path if a world is loaded
+        if (m_tileMap.isWorldLoaded()) {
+            m_saveSystem.setWorldPath(m_tileMap.getWorldFile().getWorldPath());
+            m_saveSystem.loadAll();
+        }
+
         LOG_INFO("Gameplay systems initialized (grid movement, state machine, camera controller, "
                  "pathfinding, dialogue, input actions, tile layers, animation controller, "
                  "collision layers, entity spawning, projectile system, "
                  "item drops, tool use, melee attack, combat, crafting, "
                  "enemy AI, enemy spawning, loot drops, "
-                 "NPCs, housing, shops)");
+                 "NPCs, housing, shops, "
+                 "scenes, timers, save state)");
     }
 
     // Initialize mod system
@@ -273,7 +285,12 @@ bool Engine::init(const std::string& configPath) {
                 *this, *m_npcSystem, *m_housingSystem, m_shopManager);
         }
 
-        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, and NPC Lua APIs registered");
+        // Register Scene, Timer & Save Lua APIs (Stage 16)
+        bindSceneTimerSaveAPI(
+            m_modLoader.getLuaBindings().getState(),
+            *this, m_sceneManager, m_timerSystem, m_saveSystem);
+
+        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, and scene/timer/save Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -339,6 +356,12 @@ void Engine::update(double dt) {
 
     // Update dialogue system
     m_dialogueSystem.update(dtFloat, m_input);
+
+    // Update scene manager (processes transitions)
+    m_sceneManager.update(dtFloat);
+
+    // Update timers (paused when overlay scenes are active)
+    m_timerSystem.update(dtFloat, m_registry, m_sceneManager.isPausedByOverlay());
 
     // Handle camera controls for testing (Stage 1 demo)
     // Only active when no mod has assigned a CameraTarget to any entity.
@@ -417,8 +440,11 @@ void Engine::render() {
                             m_renderer->getScreenWidth(),
                             m_renderer->getScreenHeight());
 
+    // Render scene transition overlay (on top of everything)
+    m_sceneManager.renderTransition(m_renderer.get());
+
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.5.0 - Stage 15: NPCs & Housing", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.5.0 - Stage 16: Scenes, Timers & Save State", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -513,8 +539,21 @@ void Engine::render() {
         m_renderer->drawText(npcText, {20, 290}, 16, Color(150, 200, 255, 255));
     }
 
+    // Scene, Timer & Save info (Stage 16)
+    {
+        char stageText[192];
+        const char* sceneName = m_sceneManager.currentScene().empty() ? "none" : m_sceneManager.currentScene().c_str();
+        snprintf(stageText, sizeof(stageText),
+                 "Scene: %s | Timers: %zu active | Save: %zu mods%s",
+                 sceneName,
+                 m_timerSystem.activeCount(),
+                 m_saveSystem.modCount(),
+                 m_saveSystem.isDirty() ? " (dirty)" : "");
+        m_renderer->drawText(stageText, {20, 320}, 16, Color(200, 255, 200, 255));
+    }
+
     m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F11: Fullscreen",
-                         {20, 320}, 16, Color::Gray());
+                         {20, 350}, 16, Color::Gray());
 
     m_renderer->endFrame();
 }
@@ -527,6 +566,15 @@ void Engine::shutdown() {
 
     // Shutdown UI system (after mods, before renderer)
     m_uiSystem.shutdown();
+
+    // Flush save system data to disk before closing world
+    if (m_saveSystem.isDirty()) {
+        LOG_INFO("Saving mod data...");
+        m_saveSystem.saveAll();
+    }
+
+    // Clear timers
+    m_timerSystem.clear();
 
     // Close world (auto-saves if enabled)
     if (m_tileMap.isWorldLoaded()) {

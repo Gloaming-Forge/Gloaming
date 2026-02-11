@@ -34,6 +34,9 @@
 #include "gameplay/NPCSystem.hpp"
 #include "gameplay/HousingSystem.hpp"
 #include "gameplay/ShopSystem.hpp"
+#include "gameplay/SceneManager.hpp"
+#include "gameplay/TimerSystem.hpp"
+#include "gameplay/SaveSystem.hpp"
 
 #include <string>
 #include <memory>
@@ -105,6 +108,11 @@ public:
     HousingSystem* getHousingSystem() { return m_housingSystem; }
     ShopManager& getShopManager() { return m_shopManager; }
 
+    // Scene, Timer & Save accessors (Stage 16)
+    SceneManager& getSceneManager() { return m_sceneManager; }
+    TimerSystem& getTimerSystem() { return m_timerSystem; }
+    SaveSystem& getSaveSystem() { return m_saveSystem; }
+
 private:
     void processInput();
     void update(double dt);
@@ -166,6 +174,11 @@ private:
     NPCSystem* m_npcSystem = nullptr;
     HousingSystem* m_housingSystem = nullptr;
     ShopManager m_shopManager;
+
+    // Scene, Timer & Save (Stage 16)
+    SceneManager m_sceneManager;
+    TimerSystem m_timerSystem;
+    SaveSystem m_saveSystem;
 
     bool m_running = false;
 };

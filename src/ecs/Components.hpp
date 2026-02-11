@@ -324,4 +324,17 @@ struct Lifetime {
     float getProgress() const { return duration > 0.0f ? elapsed / duration : 1.0f; }
 };
 
+/// Tag component: entities with this survive scene transitions (Stage 16)
+struct PersistentEntity {
+    PersistentEntity() = default;
+};
+
+/// Tag component: entities with this are destroyed on scene exit (Stage 16)
+struct SceneLocalEntity {
+    std::string sceneName; // Which scene owns this entity
+
+    SceneLocalEntity() = default;
+    explicit SceneLocalEntity(const std::string& scene) : sceneName(scene) {}
+};
+
 } // namespace gloaming
