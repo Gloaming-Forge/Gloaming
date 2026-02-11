@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Gloaming VERSION 0.4.0 LANGUAGES C CXX)
+project(Gloaming VERSION 0.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -142,6 +142,11 @@ add_library(gloaming_engine STATIC
     src/gameplay/EnemyAISystem.cpp
     src/gameplay/LootDropSystem.cpp
     src/gameplay/EnemyLuaBindings.cpp
+    # NPCs, Housing & Shops (Stage 15)
+    src/gameplay/NPCSystem.cpp
+    src/gameplay/HousingSystem.cpp
+    src/gameplay/ShopSystem.cpp
+    src/gameplay/NPCLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

@@ -8,6 +8,7 @@
 #include "gameplay/GameplayLoopSystems.hpp"
 #include "gameplay/GameplayLoopLuaBindings.hpp"
 #include "gameplay/EnemyLuaBindings.hpp"
+#include "gameplay/NPCLuaBindings.hpp"
 #include "world/WorldGenLuaBindings.hpp"
 
 #include <raylib.h>
@@ -28,7 +29,7 @@ bool Engine::init(const std::string& configPath) {
         LOG_INFO("Configuration loaded from '{}'", configPath);
     }
 
-    LOG_INFO("Gloaming Engine v0.4.0 starting...");
+    LOG_INFO("Gloaming Engine v0.5.0 starting...");
 
     // Create window
     WindowConfig winCfg;
@@ -213,11 +214,18 @@ bool Engine::init(const std::string& configPath) {
         m_enemySpawnSystem = m_systemScheduler.addSystem<EnemySpawnSystem>(SystemPhase::Update);
         m_systemScheduler.addSystem<LootDropSystem>(SystemPhase::PostUpdate);
 
+        // NPC, Housing & Shop systems (Stage 15)
+        m_npcSystem = m_systemScheduler.addSystem<NPCSystem>(SystemPhase::Update);
+        m_housingSystem = m_systemScheduler.addSystem<HousingSystem>(SystemPhase::PostUpdate);
+        m_shopManager.setContentRegistry(&m_modLoader.getContentRegistry());
+        m_shopManager.setEventBus(&m_modLoader.getEventBus());
+
         LOG_INFO("Gameplay systems initialized (grid movement, state machine, camera controller, "
                  "pathfinding, dialogue, input actions, tile layers, animation controller, "
                  "collision layers, entity spawning, projectile system, "
                  "item drops, tool use, melee attack, combat, crafting, "
-                 "enemy AI, enemy spawning, loot drops)");
+                 "enemy AI, enemy spawning, loot drops, "
+                 "NPCs, housing, shops)");
     }
 
     // Initialize mod system
@@ -258,7 +266,14 @@ bool Engine::init(const std::string& configPath) {
                 *this, *m_enemySpawnSystem, *m_enemyAISystem);
         }
 
-        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, and enemy AI Lua APIs registered");
+        // Register NPC, Housing & Shop Lua APIs (Stage 15)
+        if (m_npcSystem && m_housingSystem) {
+            bindNPCAPI(
+                m_modLoader.getLuaBindings().getState(),
+                *this, *m_npcSystem, *m_housingSystem, m_shopManager);
+        }
+
+        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, and NPC Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -402,7 +417,7 @@ void Engine::render() {
                             m_renderer->getScreenHeight());
 
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.4.0 - Stage 14: Enemies & AI", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.5.0 - Stage 15: NPCs & Housing", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -425,12 +440,15 @@ void Engine::render() {
     }
 
     // Mod info
-    char modText[128];
-    snprintf(modText, sizeof(modText), "Mods: %zu loaded | Content: %zu tiles, %zu items, %zu enemies",
+    char modText[192];
+    snprintf(modText, sizeof(modText),
+             "Mods: %zu loaded | Content: %zu tiles, %zu items, %zu enemies, %zu npcs, %zu shops",
              m_modLoader.loadedCount(),
              m_modLoader.getContentRegistry().tileCount(),
              m_modLoader.getContentRegistry().itemCount(),
-             m_modLoader.getContentRegistry().enemyCount());
+             m_modLoader.getContentRegistry().enemyCount(),
+             m_modLoader.getContentRegistry().npcCount(),
+             m_modLoader.getContentRegistry().shopCount());
     m_renderer->drawText(modText, {20, 140}, 16, Color(200, 150, 255, 255));
 
     // Lighting info
@@ -484,8 +502,18 @@ void Engine::render() {
         m_renderer->drawText(enemyText, {20, 260}, 16, Color(255, 150, 150, 255));
     }
 
+    // NPC info (Stage 15)
+    {
+        int npcCount = 0;
+        m_registry.each<NPCTag>([&npcCount](Entity, const NPCTag&) { ++npcCount; });
+        char npcText[128];
+        snprintf(npcText, sizeof(npcText), "NPCs: %d active | Rooms: %zu validated",
+                 npcCount, m_housingSystem ? m_housingSystem->getValidRoomCount() : 0u);
+        m_renderer->drawText(npcText, {20, 290}, 16, Color(150, 200, 255, 255));
+    }
+
     m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F11: Fullscreen",
-                         {20, 290}, 16, Color::Gray());
+                         {20, 320}, 16, Color::Gray());
 
     m_renderer->endFrame();
 }

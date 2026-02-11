@@ -18,3 +18,6 @@
 #include "gameplay/EnemyAISystem.hpp"
 #include "gameplay/EnemySpawnSystem.hpp"
 #include "gameplay/LootDropSystem.hpp"
+#include "gameplay/NPCSystem.hpp"
+#include "gameplay/HousingSystem.hpp"
+#include "gameplay/ShopSystem.hpp"

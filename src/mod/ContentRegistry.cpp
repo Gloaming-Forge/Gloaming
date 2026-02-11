@@ -52,6 +52,33 @@ void ContentRegistry::registerRecipe(const RecipeDefinition& def) {
     LOG_DEBUG("ContentRegistry: registered recipe '{}'", qid);
 }
 
+void ContentRegistry::registerNPC(const NPCDefinition& def) {
+    std::string qid = def.qualifiedId.empty() ? def.id : def.qualifiedId;
+    if (m_npcs.count(qid)) {
+        LOG_WARN("ContentRegistry: overwriting NPC '{}'", qid);
+    }
+    m_npcs[qid] = def;
+    LOG_DEBUG("ContentRegistry: registered NPC '{}'", qid);
+}
+
+void ContentRegistry::registerDialogueTree(const DialogueTreeDef& def) {
+    std::string qid = def.qualifiedId.empty() ? def.id : def.qualifiedId;
+    if (m_dialogueTrees.count(qid)) {
+        LOG_WARN("ContentRegistry: overwriting dialogue tree '{}'", qid);
+    }
+    m_dialogueTrees[qid] = def;
+    LOG_DEBUG("ContentRegistry: registered dialogue tree '{}'", qid);
+}
+
+void ContentRegistry::registerShop(const ShopDefinition& def) {
+    std::string qid = def.qualifiedId.empty() ? def.id : def.qualifiedId;
+    if (m_shops.count(qid)) {
+        LOG_WARN("ContentRegistry: overwriting shop '{}'", qid);
+    }
+    m_shops[qid] = def;
+    LOG_DEBUG("ContentRegistry: registered shop '{}'", qid);
+}
+
 // ---------------------------------------------------------------------------
 // JSON Loading
 // ---------------------------------------------------------------------------
@@ -437,6 +464,207 @@ std::vector<const RecipeDefinition*> ContentRegistry::getRecipesForItem(
     return results;
 }
 
+// ---------------------------------------------------------------------------
+// Stage 15: NPC, Dialogue, Shop JSON loading
+// ---------------------------------------------------------------------------
+
+bool ContentRegistry::loadNPCsFromJson(const nlohmann::json& json,
+                                        const std::string& modId,
+                                        const std::string& modDir) {
+    if (!json.contains("npcs") || !json["npcs"].is_array()) {
+        LOG_WARN("ContentRegistry: no 'npcs' array in JSON for mod '{}'", modId);
+        return false;
+    }
+
+    int count = 0;
+    for (const auto& npcJson : json["npcs"]) {
+        NPCDefinition npc;
+        npc.id = npcJson.value("id", "");
+        if (npc.id.empty()) {
+            LOG_WARN("ContentRegistry: NPC missing 'id' in mod '{}'", modId);
+            continue;
+        }
+        npc.qualifiedId = modId + ":" + npc.id;
+        npc.name = npcJson.value("name", npc.id);
+
+        std::string texRel = npcJson.value("texture", "");
+        npc.texturePath = texRel.empty() ? "" : modDir + "/" + texRel;
+
+        // Animations
+        if (npcJson.contains("animations") && npcJson["animations"].is_object()) {
+            for (auto& [animName, animData] : npcJson["animations"].items()) {
+                NPCAnimationDef anim;
+                anim.name = animName;
+                if (animData.contains("frames") && animData["frames"].is_array()) {
+                    for (const auto& f : animData["frames"]) {
+                        anim.frames.push_back(f.get<int>());
+                    }
+                }
+                anim.fps = animData.value("fps", 8);
+                npc.animations.push_back(std::move(anim));
+            }
+        }
+
+        // AI
+        if (npcJson.contains("ai") && npcJson["ai"].is_object()) {
+            const auto& ai = npcJson["ai"];
+            npc.aiBehavior = ai.value("behavior", "idle");
+            npc.moveSpeed = ai.value("move_speed", 40.0f);
+            npc.wanderRadius = ai.value("wander_radius", 80.0f);
+            npc.interactionRange = ai.value("interaction_range", 48.0f);
+        }
+
+        npc.dialogueId = npcJson.value("dialogue", "");
+        npc.shopId = npcJson.value("shop", "");
+        npc.requiresHousing = npcJson.value("requires_housing", true);
+
+        if (npcJson.contains("collider") && npcJson["collider"].is_object()) {
+            npc.colliderWidth = npcJson["collider"].value("width", 16.0f);
+            npc.colliderHeight = npcJson["collider"].value("height", 16.0f);
+        }
+
+        registerNPC(npc);
+        ++count;
+    }
+
+    LOG_INFO("ContentRegistry: loaded {} NPCs from mod '{}'", count, modId);
+    return true;
+}
+
+bool ContentRegistry::loadDialogueFromJson(const nlohmann::json& json,
+                                             const std::string& modId) {
+    if (!json.contains("dialogues") || !json["dialogues"].is_array()) {
+        LOG_WARN("ContentRegistry: no 'dialogues' array in JSON for mod '{}'", modId);
+        return false;
+    }
+
+    int count = 0;
+    for (const auto& dlgJson : json["dialogues"]) {
+        DialogueTreeDef tree;
+        tree.id = dlgJson.value("id", "");
+        if (tree.id.empty()) {
+            LOG_WARN("ContentRegistry: dialogue missing 'id' in mod '{}'", modId);
+            continue;
+        }
+        tree.qualifiedId = modId + ":" + tree.id;
+        tree.greetingNodeId = dlgJson.value("greeting", "");
+
+        if (dlgJson.contains("nodes") && dlgJson["nodes"].is_array()) {
+            for (const auto& nodeJson : dlgJson["nodes"]) {
+                DialogueNodeDef node;
+                node.id = nodeJson.value("id", "");
+                node.speaker = nodeJson.value("speaker", "");
+                node.text = nodeJson.value("text", "");
+                node.portraitId = nodeJson.value("portrait", "");
+                node.nextNodeId = nodeJson.value("next", "");
+
+                if (nodeJson.contains("choices") && nodeJson["choices"].is_array()) {
+                    for (const auto& choiceJson : nodeJson["choices"]) {
+                        DialogueChoiceDef choice;
+                        choice.text = choiceJson.value("text", "");
+                        choice.nextNodeId = choiceJson.value("next", "");
+                        node.choices.push_back(std::move(choice));
+                    }
+                }
+
+                tree.nodes.push_back(std::move(node));
+            }
+        }
+
+        registerDialogueTree(tree);
+        ++count;
+    }
+
+    LOG_INFO("ContentRegistry: loaded {} dialogue trees from mod '{}'", count, modId);
+    return true;
+}
+
+bool ContentRegistry::loadShopsFromJson(const nlohmann::json& json,
+                                          const std::string& modId) {
+    if (!json.contains("shops") || !json["shops"].is_array()) {
+        LOG_WARN("ContentRegistry: no 'shops' array in JSON for mod '{}'", modId);
+        return false;
+    }
+
+    int count = 0;
+    for (const auto& shopJson : json["shops"]) {
+        ShopDefinition shop;
+        shop.id = shopJson.value("id", "");
+        if (shop.id.empty()) {
+            LOG_WARN("ContentRegistry: shop missing 'id' in mod '{}'", modId);
+            continue;
+        }
+        shop.qualifiedId = modId + ":" + shop.id;
+        shop.name = shopJson.value("name", shop.id);
+        shop.buyMultiplier = shopJson.value("buy_multiplier", 1.0f);
+        shop.sellMultiplier = shopJson.value("sell_multiplier", 0.5f);
+        shop.currencyItem = shopJson.value("currency", "base:coins");
+
+        if (shopJson.contains("items") && shopJson["items"].is_array()) {
+            for (const auto& itemJson : shopJson["items"]) {
+                ShopItemEntry entry;
+                entry.itemId = itemJson.value("item", "");
+                entry.buyPrice = itemJson.value("buy_price", 10);
+                entry.sellPrice = itemJson.value("sell_price", 5);
+                entry.stock = itemJson.value("stock", -1);
+                entry.available = itemJson.value("available", true);
+                shop.items.push_back(std::move(entry));
+            }
+        }
+
+        registerShop(shop);
+        ++count;
+    }
+
+    LOG_INFO("ContentRegistry: loaded {} shops from mod '{}'", count, modId);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Stage 15 Queries
+// ---------------------------------------------------------------------------
+
+const NPCDefinition* ContentRegistry::getNPC(const std::string& qualifiedId) const {
+    auto it = m_npcs.find(qualifiedId);
+    return it != m_npcs.end() ? &it->second : nullptr;
+}
+
+const DialogueTreeDef* ContentRegistry::getDialogueTree(const std::string& qualifiedId) const {
+    auto it = m_dialogueTrees.find(qualifiedId);
+    return it != m_dialogueTrees.end() ? &it->second : nullptr;
+}
+
+const ShopDefinition* ContentRegistry::getShop(const std::string& qualifiedId) const {
+    auto it = m_shops.find(qualifiedId);
+    return it != m_shops.end() ? &it->second : nullptr;
+}
+
+bool ContentRegistry::hasNPC(const std::string& qualifiedId) const {
+    return m_npcs.count(qualifiedId) > 0;
+}
+
+bool ContentRegistry::hasShop(const std::string& qualifiedId) const {
+    return m_shops.count(qualifiedId) > 0;
+}
+
+bool ContentRegistry::hasDialogueTree(const std::string& qualifiedId) const {
+    return m_dialogueTrees.count(qualifiedId) > 0;
+}
+
+std::vector<std::string> ContentRegistry::getNPCIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(m_npcs.size());
+    for (const auto& [id, _] : m_npcs) ids.push_back(id);
+    return ids;
+}
+
+std::vector<std::string> ContentRegistry::getShopIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(m_shops.size());
+    for (const auto& [id, _] : m_shops) ids.push_back(id);
+    return ids;
+}
+
 void ContentRegistry::clear() {
     m_tiles.clear();
     m_runtimeToTile.clear();
@@ -444,6 +672,9 @@ void ContentRegistry::clear() {
     m_items.clear();
     m_enemies.clear();
     m_recipes.clear();
+    m_npcs.clear();
+    m_dialogueTrees.clear();
+    m_shops.clear();
     m_tileToItem.clear();
     m_tileToItemDirty = true;
 }
