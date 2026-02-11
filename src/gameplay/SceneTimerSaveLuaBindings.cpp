@@ -334,19 +334,13 @@ void bindSceneTimerSaveAPI(sol::state& lua, Engine& engine,
             return sol::nil;
         }
 
-        nlohmann::json defaultJson;
-        if (defaultVal) {
-            defaultJson = solToJson(*defaultVal);
-        }
-
-        nlohmann::json result = saveSystem.get(modId, key, defaultJson);
-
-        // If result is same as default (key not found), return the original Lua default
-        if (result == defaultJson && !saveSystem.has(modId, key)) {
+        // Check existence first to avoid unnecessary JSON conversions
+        if (!saveSystem.has(modId, key)) {
             if (defaultVal) return *defaultVal;
             return sol::nil;
         }
 
+        nlohmann::json result = saveSystem.get(modId, key);
         return jsonToSol(lua, result);
     };
 

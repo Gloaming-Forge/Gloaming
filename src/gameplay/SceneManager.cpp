@@ -178,21 +178,8 @@ void SceneManager::update(float dt) {
 
     m_transition.elapsed += dt;
 
-    // For fade transitions, execute the switch at the halfway point
-    if (m_transition.type == TransitionType::Fade && !m_transition.halfwayReached) {
-        float halfDuration = m_transition.duration * 0.5f;
-        if (m_transition.elapsed >= halfDuration) {
-            m_transition.halfwayReached = true;
-            executeSceneSwitch(m_transition.targetScene);
-        }
-    }
-
-    // For slide transitions, execute the switch at the halfway point
-    if ((m_transition.type == TransitionType::SlideLeft ||
-         m_transition.type == TransitionType::SlideRight ||
-         m_transition.type == TransitionType::SlideUp ||
-         m_transition.type == TransitionType::SlideDown) &&
-        !m_transition.halfwayReached) {
+    // All non-instant transitions execute the scene switch at the halfway point
+    if (!m_transition.halfwayReached && m_transition.type != TransitionType::Instant) {
         float halfDuration = m_transition.duration * 0.5f;
         if (m_transition.elapsed >= halfDuration) {
             m_transition.halfwayReached = true;
@@ -202,7 +189,6 @@ void SceneManager::update(float dt) {
 
     // Complete transition
     if (m_transition.isComplete()) {
-        // If instant (shouldn't reach here) or non-fade, execute switch if not done
         if (!m_transition.halfwayReached) {
             executeSceneSwitch(m_transition.targetScene);
         }
@@ -234,21 +220,71 @@ void SceneManager::renderTransition(IRenderer* renderer) {
             break;
         }
 
-        case TransitionType::SlideLeft:
-        case TransitionType::SlideRight:
-        case TransitionType::SlideUp:
-        case TransitionType::SlideDown: {
-            // Sliding wipe effect — a black bar sweeps across/down/up
-            float alpha;
+        case TransitionType::SlideLeft: {
+            // Wipe: black bar sweeps from right to center, then center to left
+            float wipePos;
             if (progress < 0.5f) {
-                alpha = progress * 2.0f;
+                wipePos = progress * 2.0f; // 0 -> 1 (covers screen right-to-left)
             } else {
-                alpha = (1.0f - progress) * 2.0f;
+                wipePos = (1.0f - progress) * 2.0f; // 1 -> 0 (uncovers left-to-right)
             }
-            uint8_t a = static_cast<uint8_t>(std::min(255.0f, alpha * 255.0f));
+            float barWidth = wipePos * static_cast<float>(screenW);
+            float barX = static_cast<float>(screenW) - barWidth;
+            if (progress >= 0.5f) barX = 0.0f;
             renderer->drawRectangle(
-                Rect(0.0f, 0.0f, static_cast<float>(screenW), static_cast<float>(screenH)),
-                Color(0, 0, 0, a));
+                Rect(barX, 0.0f, barWidth, static_cast<float>(screenH)),
+                Color(0, 0, 0, 255));
+            break;
+        }
+
+        case TransitionType::SlideRight: {
+            // Wipe: black bar sweeps from left to center, then center to right
+            float wipePos;
+            if (progress < 0.5f) {
+                wipePos = progress * 2.0f;
+            } else {
+                wipePos = (1.0f - progress) * 2.0f;
+            }
+            float barWidth = wipePos * static_cast<float>(screenW);
+            float barX = 0.0f;
+            if (progress >= 0.5f) barX = static_cast<float>(screenW) - barWidth;
+            renderer->drawRectangle(
+                Rect(barX, 0.0f, barWidth, static_cast<float>(screenH)),
+                Color(0, 0, 0, 255));
+            break;
+        }
+
+        case TransitionType::SlideUp: {
+            // Wipe: black bar sweeps from bottom to center, then center to top
+            float wipePos;
+            if (progress < 0.5f) {
+                wipePos = progress * 2.0f;
+            } else {
+                wipePos = (1.0f - progress) * 2.0f;
+            }
+            float barHeight = wipePos * static_cast<float>(screenH);
+            float barY = static_cast<float>(screenH) - barHeight;
+            if (progress >= 0.5f) barY = 0.0f;
+            renderer->drawRectangle(
+                Rect(0.0f, barY, static_cast<float>(screenW), barHeight),
+                Color(0, 0, 0, 255));
+            break;
+        }
+
+        case TransitionType::SlideDown: {
+            // Wipe: black bar sweeps from top to center, then center to bottom
+            float wipePos;
+            if (progress < 0.5f) {
+                wipePos = progress * 2.0f;
+            } else {
+                wipePos = (1.0f - progress) * 2.0f;
+            }
+            float barHeight = wipePos * static_cast<float>(screenH);
+            float barY = 0.0f;
+            if (progress >= 0.5f) barY = static_cast<float>(screenH) - barHeight;
+            renderer->drawRectangle(
+                Rect(0.0f, barY, static_cast<float>(screenW), barHeight),
+                Color(0, 0, 0, 255));
             break;
         }
 

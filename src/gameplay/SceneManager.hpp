@@ -105,22 +105,8 @@ struct TransitionState {
     }
 };
 
-// ============================================================================
-// Persistent Entity Tag
-// ============================================================================
-
-/// Tag component: entities with this survive scene transitions
-struct PersistentEntity {
-    PersistentEntity() = default;
-};
-
-/// Tag component: entities with this are destroyed on scene exit
-struct SceneLocalEntity {
-    std::string sceneName; // Which scene owns this entity
-
-    SceneLocalEntity() = default;
-    explicit SceneLocalEntity(const std::string& scene) : sceneName(scene) {}
-};
+// PersistentEntity and SceneLocalEntity tag components are defined in
+// ecs/Components.hpp alongside other entity tags (PlayerTag, EnemyTag, etc.)
 
 // ============================================================================
 // Scene Manager

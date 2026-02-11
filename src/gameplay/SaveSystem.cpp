@@ -20,21 +20,43 @@ bool SaveSystem::set(const std::string& modId, const std::string& key, const nlo
         return false;
     }
 
+    // Quick size check on the new value alone — reject obviously oversized values
+    // without needing to serialize the entire mod's data.
+    size_t valueSize = value.dump().size();
+    if (valueSize > MAX_SAVE_FILE_SIZE) {
+        LOG_WARN("SaveSystem::set: value for key '{}' alone exceeds {} byte limit",
+                 key, MAX_SAVE_FILE_SIZE);
+        return false;
+    }
+
     // Set the value in memory
     auto& data = m_modData[modId];
+    nlohmann::json previousValue;
+    bool hadPrevious = data.contains(key);
+    if (hadPrevious) {
+        previousValue = std::move(data[key]);
+    }
     data[key] = value;
 
-    // Check size limit
-    size_t size = estimateSize(modId);
-    if (size > MAX_SAVE_FILE_SIZE) {
-        // Revert the change
-        data.erase(key);
-        if (data.empty()) {
-            m_modData.erase(modId);
+    // Only do the expensive full-size check when the mod has enough data
+    // that it could plausibly be near the limit. Key count * avg overhead
+    // gives a rough lower bound — skip the full dump for small data sets.
+    if (data.size() > 100 || valueSize > MAX_SAVE_FILE_SIZE / 4) {
+        size_t size = estimateSize(modId);
+        if (size > MAX_SAVE_FILE_SIZE) {
+            // Revert the change
+            if (hadPrevious) {
+                data[key] = std::move(previousValue);
+            } else {
+                data.erase(key);
+                if (data.empty()) {
+                    m_modData.erase(modId);
+                }
+            }
+            LOG_WARN("SaveSystem::set: mod '{}' save data would exceed {} byte limit (attempted: {} bytes)",
+                     modId, MAX_SAVE_FILE_SIZE, size);
+            return false;
         }
-        LOG_WARN("SaveSystem::set: mod '{}' save data would exceed {} byte limit (attempted: {} bytes)",
-                 modId, MAX_SAVE_FILE_SIZE, size);
-        return false;
     }
 
     m_dirty = true;

@@ -227,7 +227,7 @@ bool Engine::init(const std::string& configPath) {
 
         // Wire save system to world path if a world is loaded
         if (m_tileMap.isWorldLoaded()) {
-            m_saveSystem.setWorldPath(worldPath);
+            m_saveSystem.setWorldPath(m_tileMap.getWorldFile().getWorldPath());
             m_saveSystem.loadAll();
         }
 
