@@ -7,6 +7,7 @@
 #include "gameplay/EntityLuaBindings.hpp"
 #include "gameplay/GameplayLoopSystems.hpp"
 #include "gameplay/GameplayLoopLuaBindings.hpp"
+#include "gameplay/EnemyLuaBindings.hpp"
 #include "world/WorldGenLuaBindings.hpp"
 
 #include <raylib.h>
@@ -207,10 +208,16 @@ bool Engine::init(const std::string& configPath) {
         m_craftingManager.setContentRegistry(&m_modLoader.getContentRegistry());
         m_craftingManager.setTileMap(&m_tileMap);
 
+        // Enemy & AI systems (Stage 14)
+        m_enemyAISystem = m_systemScheduler.addSystem<EnemyAISystem>(SystemPhase::Update);
+        m_enemySpawnSystem = m_systemScheduler.addSystem<EnemySpawnSystem>(SystemPhase::Update);
+        m_systemScheduler.addSystem<LootDropSystem>(SystemPhase::PostUpdate);
+
         LOG_INFO("Gameplay systems initialized (grid movement, state machine, camera controller, "
                  "pathfinding, dialogue, input actions, tile layers, animation controller, "
                  "collision layers, entity spawning, projectile system, "
-                 "item drops, tool use, melee attack, combat, crafting)");
+                 "item drops, tool use, melee attack, combat, crafting, "
+                 "enemy AI, enemy spawning, loot drops)");
     }
 
     // Initialize mod system
@@ -244,7 +251,14 @@ bool Engine::init(const std::string& configPath) {
             m_modLoader.getLuaBindings().getState(),
             *this, m_craftingManager);
 
-        LOG_INFO("Gameplay, entity, worldgen, and gameplay loop Lua APIs registered");
+        // Register enemy & AI Lua APIs (Stage 14)
+        if (m_enemySpawnSystem && m_enemyAISystem) {
+            bindEnemyAPI(
+                m_modLoader.getLuaBindings().getState(),
+                *this, *m_enemySpawnSystem, *m_enemyAISystem);
+        }
+
+        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, and enemy AI Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -388,7 +402,7 @@ void Engine::render() {
                             m_renderer->getScreenHeight());
 
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.4.0 - Stage 13: Gameplay Loop", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.4.0 - Stage 14: Enemies & AI", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -459,8 +473,19 @@ void Engine::render() {
         m_renderer->drawText(uiText, {20, 230}, 16, Color(220, 180, 255, 255));
     }
 
+    // Enemy info (Stage 14)
+    if (m_enemySpawnSystem) {
+        const auto& eStats = m_enemySpawnSystem->getStats();
+        char enemyText[192];
+        snprintf(enemyText, sizeof(enemyText),
+                 "Enemies: %d active | %d spawned | %d killed | Spawning: %s",
+                 eStats.activeEnemies, eStats.totalSpawned, eStats.totalKilled,
+                 m_enemySpawnSystem->getConfig().enabled ? "on" : "off");
+        m_renderer->drawText(enemyText, {20, 260}, 16, Color(255, 150, 150, 255));
+    }
+
     m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F11: Fullscreen",
-                         {20, 260}, 16, Color::Gray());
+                         {20, 290}, 16, Color::Gray());
 
     m_renderer->endFrame();
 }
