@@ -49,6 +49,7 @@ struct ValidatedRoom {
     bool isValid = false;
     Entity assignedNPC = NullEntity;
     float lastValidationTime = 0.0f;
+    int consecutiveInvalidChecks = 0;    // Grace period counter for eviction
 };
 
 // ============================================================================

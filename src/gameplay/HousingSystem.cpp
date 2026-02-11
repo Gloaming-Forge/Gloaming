@@ -28,9 +28,8 @@ void HousingSystem::update(float dt) {
 
     if (!m_tileMap || !m_tileMap->isWorldLoaded()) return;
 
-    // Re-validate existing rooms
+    // Re-validate existing rooms and track consecutive failures
     for (auto& room : m_rooms) {
-        // Pick center tile of room to re-validate
         int cx = (room.topLeft.x + room.bottomRight.x) / 2;
         int cy = (room.topLeft.y + room.bottomRight.y) / 2;
         ValidatedRoom recheck = validateRoom(cx, cy);
@@ -38,13 +37,21 @@ void HousingSystem::update(float dt) {
         room.hasLight = recheck.hasLight;
         room.hasFurniture = recheck.hasFurniture;
         room.isValid = recheck.isValid;
+
+        if (room.isValid) {
+            room.consecutiveInvalidChecks = 0;
+        } else {
+            ++room.consecutiveInvalidChecks;
+        }
     }
 
-    // Evict rooms that are no longer valid (unassign NPC first via event)
+    // Evict rooms that have been invalid for 3+ consecutive checks (grace period
+    // prevents eviction from transient changes like a player briefly mining a wall)
+    static constexpr int EvictionThreshold = 3;
     m_rooms.erase(
         std::remove_if(m_rooms.begin(), m_rooms.end(),
             [this](const ValidatedRoom& room) {
-                if (!room.isValid) {
+                if (room.consecutiveInvalidChecks >= EvictionThreshold) {
                     if (m_eventBus && room.assignedNPC != NullEntity) {
                         EventData data;
                         data.setInt("room_id", room.id);
