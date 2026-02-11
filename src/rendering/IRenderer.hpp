@@ -149,6 +149,15 @@ public:
     /// Draw a rectangle outline
     virtual void drawRectangleOutline(const Rect& rect, const Color& color, float thickness = 1.0f) = 0;
 
+    /// Draw a line between two points
+    virtual void drawLine(Vec2 start, Vec2 end, const Color& color, float thickness = 1.0f) = 0;
+
+    /// Draw a filled circle
+    virtual void drawCircle(Vec2 center, float radius, const Color& color) = 0;
+
+    /// Draw a circle outline
+    virtual void drawCircleOutline(Vec2 center, float radius, const Color& color, float thickness = 1.0f) = 0;
+
     /// Draw text (basic, for debugging)
     virtual void drawText(const std::string& text, Vec2 position, int fontSize,
                          const Color& color) = 0;

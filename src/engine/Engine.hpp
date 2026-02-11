@@ -37,6 +37,9 @@
 #include "gameplay/SceneManager.hpp"
 #include "gameplay/TimerSystem.hpp"
 #include "gameplay/SaveSystem.hpp"
+#include "gameplay/ParticleSystem.hpp"
+#include "gameplay/TweenSystem.hpp"
+#include "gameplay/DebugDrawSystem.hpp"
 
 #include <string>
 #include <memory>
@@ -113,6 +116,11 @@ public:
     TimerSystem& getTimerSystem() { return m_timerSystem; }
     SaveSystem& getSaveSystem() { return m_saveSystem; }
 
+    // Particles, Tween & Debug accessors (Stage 17)
+    ParticleSystem* getParticleSystem() { return m_particleSystem; }
+    TweenSystem& getTweenSystem() { return m_tweenSystem; }
+    DebugDrawSystem& getDebugDrawSystem() { return m_debugDrawSystem; }
+
 private:
     void processInput();
     void update(double dt);
@@ -179,6 +187,11 @@ private:
     SceneManager m_sceneManager;
     TimerSystem m_timerSystem;
     SaveSystem m_saveSystem;
+
+    // Particles, Tween & Debug (Stage 17) — ParticleSystem managed by SystemScheduler
+    ParticleSystem* m_particleSystem = nullptr;
+    TweenSystem m_tweenSystem;
+    DebugDrawSystem m_debugDrawSystem;
 
     bool m_running = false;
 };
