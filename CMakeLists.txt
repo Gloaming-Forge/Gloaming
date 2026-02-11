@@ -147,6 +147,11 @@ add_library(gloaming_engine STATIC
     src/gameplay/HousingSystem.cpp
     src/gameplay/ShopSystem.cpp
     src/gameplay/NPCLuaBindings.cpp
+    # Scenes, Timers & Save State (Stage 16)
+    src/gameplay/SceneManager.cpp
+    src/gameplay/TimerSystem.cpp
+    src/gameplay/SaveSystem.cpp
+    src/gameplay/SceneTimerSaveLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC
