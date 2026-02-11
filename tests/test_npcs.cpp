@@ -8,6 +8,8 @@
 #include "ecs/Components.hpp"
 #include "mod/ContentRegistry.hpp"
 
+#include <cmath>
+
 using namespace gloaming;
 
 // =============================================================================
@@ -516,6 +518,82 @@ TEST(ShopManagerTest, SellItemNotInInventory) {
     EXPECT_EQ(result.failReason, "item not in inventory");
 }
 
+TEST(ShopManagerTest, BuyDecrementsStock) {
+    ContentRegistry contentRegistry;
+
+    ShopDefinition shop;
+    shop.id = "store";
+    shop.qualifiedId = "base:store";
+    shop.buyMultiplier = 1.0f;
+    shop.currencyItem = "base:coins";
+
+    ShopItemEntry item;
+    item.itemId = "base:torch";
+    item.buyPrice = 5;
+    item.stock = 10;
+    item.available = true;
+    shop.items.push_back(item);
+
+    contentRegistry.registerShop(shop);
+
+    ShopManager manager;
+    manager.setContentRegistry(&contentRegistry);
+
+    Inventory inv;
+    inv.addItem("base:coins", 200);
+
+    // Buy 3 torches (stock 10 -> 7)
+    TradeResult result = manager.buyItem("base:store", "base:torch", 3, inv);
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.finalPrice, 15);
+    EXPECT_EQ(inv.countItem("base:torch"), 3);
+    EXPECT_EQ(manager.getRemainingStock("base:store", "base:torch"), 7);
+
+    // Buy 8 more — only 7 in stock, should clamp to 7
+    result = manager.buyItem("base:store", "base:torch", 8, inv);
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(inv.countItem("base:torch"), 10); // 3 + 7
+    EXPECT_EQ(result.finalPrice, 35); // 7 * 5
+    EXPECT_EQ(manager.getRemainingStock("base:store", "base:torch"), 0);
+
+    // Try to buy more (0 stock)
+    result = manager.buyItem("base:store", "base:torch", 1, inv);
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.failReason, "out of stock");
+}
+
+TEST(ShopManagerTest, BuyDeductsCurrencyBeforeAddingItems) {
+    ContentRegistry contentRegistry;
+
+    ShopDefinition shop;
+    shop.id = "store";
+    shop.qualifiedId = "base:store";
+    shop.buyMultiplier = 1.0f;
+    shop.currencyItem = "base:coins";
+
+    ShopItemEntry item;
+    item.itemId = "base:potion";
+    item.buyPrice = 10;
+    item.stock = -1;
+    item.available = true;
+    shop.items.push_back(item);
+
+    contentRegistry.registerShop(shop);
+
+    ShopManager manager;
+    manager.setContentRegistry(&contentRegistry);
+
+    // Insufficient funds should leave inventory unchanged
+    Inventory inv;
+    inv.addItem("base:coins", 5);
+
+    TradeResult result = manager.buyItem("base:store", "base:potion", 1, inv);
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.failReason, "insufficient funds");
+    EXPECT_EQ(inv.countItem("base:coins"), 5);
+    EXPECT_EQ(inv.countItem("base:potion"), 0);
+}
+
 TEST(ShopManagerTest, GetBuySellPrices) {
     ContentRegistry contentRegistry;
 
@@ -685,4 +763,52 @@ TEST(ContentRegistryClearTest, ClearsNPCAndShopData) {
     EXPECT_FALSE(registry.hasNPC("base:test"));
     EXPECT_FALSE(registry.hasShop("base:shop"));
     EXPECT_FALSE(registry.hasDialogueTree("base:dlg"));
+}
+
+// =============================================================================
+// NPC Reference Validation
+// =============================================================================
+
+TEST(ContentRegistryValidationTest, ValidateNPCReferencesNoThrow) {
+    ContentRegistry registry;
+
+    // NPC with valid references
+    DialogueTreeDef tree;
+    tree.id = "dlg";
+    tree.qualifiedId = "base:dlg";
+    registry.registerDialogueTree(tree);
+
+    ShopDefinition shop;
+    shop.id = "shop";
+    shop.qualifiedId = "base:shop";
+    registry.registerShop(shop);
+
+    NPCDefinition npc;
+    npc.id = "merchant";
+    npc.qualifiedId = "base:merchant";
+    npc.dialogueId = "base:dlg";
+    npc.shopId = "base:shop";
+    registry.registerNPC(npc);
+
+    // Should not throw — references are valid
+    EXPECT_NO_THROW(registry.validateNPCReferences());
+
+    // NPC with broken references should also not throw (just logs warnings)
+    NPCDefinition broken;
+    broken.id = "broken";
+    broken.qualifiedId = "base:broken";
+    broken.dialogueId = "base:nonexistent_dlg";
+    broken.shopId = "base:nonexistent_shop";
+    registry.registerNPC(broken);
+
+    EXPECT_NO_THROW(registry.validateNPCReferences());
+}
+
+// =============================================================================
+// NPCAI wanderDirectionY default
+// =============================================================================
+
+TEST(NPCAITest, WanderDirectionYDefault) {
+    NPCAI ai;
+    EXPECT_EQ(ai.wanderDirectionY, 0);
 }

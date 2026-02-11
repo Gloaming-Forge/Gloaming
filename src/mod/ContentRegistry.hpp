@@ -389,6 +389,12 @@ public:
     /// Get the item ID that places a given tile (reverse lookup). Returns empty string if none.
     std::string getItemForTile(const std::string& tileId) const;
 
+    // ---- Validation ----
+
+    /// Validate that NPC dialogue/shop references exist. Call after all content is loaded.
+    /// Logs warnings for any broken references.
+    void validateNPCReferences() const;
+
     // ---- Stats ----
 
     size_t tileCount() const { return m_tiles.size(); }

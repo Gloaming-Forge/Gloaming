@@ -4,6 +4,7 @@
 #include "mod/ContentRegistry.hpp"
 
 #include <string>
+#include <unordered_map>
 
 namespace gloaming {
 
@@ -46,12 +47,25 @@ public:
     /// Get the shop definition (or nullptr if not found).
     const ShopDefinition* getShop(const std::string& shopId) const;
 
+    /// Get remaining stock for a specific item (-1 = infinite, 0 = out of stock).
+    int getRemainingStock(const std::string& shopId, const std::string& itemId) const;
+
 private:
     const ShopItemEntry* findShopItem(const ShopDefinition& shop,
                                        const std::string& itemId) const;
 
+    /// Initialize runtime stock from definition if not yet tracked.
+    int initStock(const std::string& shopId, const std::string& itemId, int definedStock);
+
+    /// Decrement runtime stock after a purchase.
+    void decrementStock(const std::string& shopId, const std::string& itemId, int amount);
+
     ContentRegistry* m_contentRegistry = nullptr;
     EventBus* m_eventBus = nullptr;
+
+    /// Runtime stock tracking, separate from immutable ShopDefinition.
+    /// Maps shopId -> (itemId -> remainingStock). -1 means infinite.
+    std::unordered_map<std::string, std::unordered_map<std::string, int>> m_runtimeStock;
 };
 
 } // namespace gloaming

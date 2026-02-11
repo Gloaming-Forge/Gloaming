@@ -37,12 +37,20 @@ TradeResult ShopManager::buyItem(const std::string& shopId, const std::string& i
         return result;
     }
 
-    if (entry->stock >= 0 && entry->stock < count) {
-        result.failReason = "insufficient stock";
+    // Check runtime stock
+    int remaining = initStock(shopId, itemId, entry->stock);
+    if (remaining == 0) {
+        result.failReason = "out of stock";
         return result;
     }
 
-    int totalPrice = static_cast<int>(std::ceil(entry->buyPrice * count * shop->buyMultiplier));
+    // Clamp count to available stock (-1 means infinite)
+    int buyCount = count;
+    if (remaining > 0) {
+        buyCount = std::min(buyCount, remaining);
+    }
+
+    int totalPrice = static_cast<int>(std::ceil(entry->buyPrice * buyCount * shop->buyMultiplier));
     result.finalPrice = totalPrice;
 
     // Check player has enough currency
@@ -51,20 +59,34 @@ TradeResult ShopManager::buyItem(const std::string& shopId, const std::string& i
         return result;
     }
 
-    // Check player has inventory space
-    int leftover = playerInventory.addItem(itemId, count);
-    if (leftover == count) {
+    // Deduct currency FIRST (before adding items)
+    playerInventory.removeItem(shop->currencyItem, totalPrice);
+
+    // Add items to inventory
+    int leftover = playerInventory.addItem(itemId, buyCount);
+    int actualBought = buyCount - leftover;
+
+    if (actualBought == 0) {
+        // Nothing was added — refund currency
+        playerInventory.addItem(shop->currencyItem, totalPrice);
         result.failReason = "inventory full";
         return result;
     }
 
-    // If only partial fit, adjust count and price
-    int actualBought = count - leftover;
-    totalPrice = static_cast<int>(std::ceil(entry->buyPrice * actualBought * shop->buyMultiplier));
-    result.finalPrice = totalPrice;
+    // If partial add, refund the difference
+    if (actualBought < buyCount) {
+        int actualPrice = static_cast<int>(std::ceil(entry->buyPrice * actualBought * shop->buyMultiplier));
+        int refund = totalPrice - actualPrice;
+        if (refund > 0) {
+            playerInventory.addItem(shop->currencyItem, refund);
+        }
+        totalPrice = actualPrice;
+    }
 
-    // Deduct currency
-    playerInventory.removeItem(shop->currencyItem, totalPrice);
+    // Decrement runtime stock
+    decrementStock(shopId, itemId, actualBought);
+
+    result.finalPrice = totalPrice;
 
     // Emit event
     if (m_eventBus) {
@@ -184,12 +206,48 @@ const ShopDefinition* ShopManager::getShop(const std::string& shopId) const {
     return m_contentRegistry->getShop(shopId);
 }
 
+int ShopManager::getRemainingStock(const std::string& shopId, const std::string& itemId) const {
+    auto shopIt = m_runtimeStock.find(shopId);
+    if (shopIt == m_runtimeStock.end()) {
+        // Not yet tracked — return defined stock
+        if (!m_contentRegistry) return -1;
+        const ShopDefinition* shop = m_contentRegistry->getShop(shopId);
+        if (!shop) return -1;
+        const ShopItemEntry* entry = findShopItem(*shop, itemId);
+        return entry ? entry->stock : -1;
+    }
+    auto itemIt = shopIt->second.find(itemId);
+    if (itemIt == shopIt->second.end()) return -1;
+    return itemIt->second;
+}
+
 const ShopItemEntry* ShopManager::findShopItem(const ShopDefinition& shop,
                                                 const std::string& itemId) const {
     for (const auto& entry : shop.items) {
         if (entry.itemId == itemId) return &entry;
     }
     return nullptr;
+}
+
+int ShopManager::initStock(const std::string& shopId, const std::string& itemId, int definedStock) {
+    if (definedStock < 0) return -1; // infinite
+
+    auto& shopStock = m_runtimeStock[shopId];
+    auto it = shopStock.find(itemId);
+    if (it == shopStock.end()) {
+        shopStock[itemId] = definedStock;
+        return definedStock;
+    }
+    return it->second;
+}
+
+void ShopManager::decrementStock(const std::string& shopId, const std::string& itemId, int amount) {
+    auto shopIt = m_runtimeStock.find(shopId);
+    if (shopIt == m_runtimeStock.end()) return;
+    auto itemIt = shopIt->second.find(itemId);
+    if (itemIt == shopIt->second.end()) return;
+    if (itemIt->second < 0) return; // infinite stock
+    itemIt->second = std::max(0, itemIt->second - amount);
 }
 
 } // namespace gloaming

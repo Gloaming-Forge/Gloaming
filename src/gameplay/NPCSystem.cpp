@@ -188,10 +188,7 @@ bool NPCSystem::startDialogue(Entity npc, Entity player) {
 }
 
 int NPCSystem::getActiveNPCCount() const {
-    int count = 0;
-    auto& registry = const_cast<Registry&>(getRegistry());
-    registry.each<NPCTag>([&count](Entity, const NPCTag&) { ++count; });
-    return count;
+    return static_cast<int>(getRegistry().count<NPCTag>());
 }
 
 void NPCSystem::checkPlayerInteraction(Entity npc, const Transform& npcTransform, NPCAI& ai) {
@@ -233,14 +230,19 @@ void NPCSystem::behaviorWander(Entity npc, NPCAI& ai, float dt) {
     ai.wanderTimer -= dt;
     if (ai.wanderTimer <= 0.0f) {
         // Pick new direction or pause
-        if (ai.wanderDirection != 0) {
+        bool wasMoving = (ai.wanderDirection != 0 || ai.wanderDirectionY != 0);
+        if (wasMoving) {
             // Was moving, now pause
             ai.wanderDirection = 0;
+            ai.wanderDirectionY = 0;
             ai.wanderPauseTimer = 1.0f + static_cast<float>(std::rand() % 30) / 10.0f;
             velocity.linear = Vec2(0.0f, 0.0f);
         } else {
             // Was paused, now move
             ai.wanderDirection = (std::rand() % 2 == 0) ? -1 : 1;
+            if (m_viewMode == ViewMode::TopDown) {
+                ai.wanderDirectionY = (std::rand() % 2 == 0) ? -1 : 1;
+            }
             ai.wanderTimer = 1.0f + static_cast<float>(std::rand() % 30) / 10.0f;
         }
         return;
@@ -249,7 +251,6 @@ void NPCSystem::behaviorWander(Entity npc, NPCAI& ai, float dt) {
     // Check if we're outside wander radius
     float dx = transform.position.x - ai.homePosition.x;
     if (std::abs(dx) > ai.wanderRadius) {
-        // Turn back toward home
         ai.wanderDirection = (dx > 0) ? -1 : 1;
     }
 
@@ -257,9 +258,10 @@ void NPCSystem::behaviorWander(Entity npc, NPCAI& ai, float dt) {
         // Top-down: wander in both axes
         float dy = transform.position.y - ai.homePosition.y;
         if (std::abs(dy) > ai.wanderRadius) {
-            // For simplicity, only handle X-axis wander for now
+            ai.wanderDirectionY = (dy > 0) ? -1 : 1;
         }
         velocity.linear.x = ai.wanderDirection * ai.moveSpeed;
+        velocity.linear.y = ai.wanderDirectionY * ai.moveSpeed;
     } else {
         // Side-view: horizontal wander only
         velocity.linear.x = ai.wanderDirection * ai.moveSpeed;
@@ -278,17 +280,18 @@ Entity NPCSystem::findNearestPlayer(const Vec2& position, float maxRange) const 
     Entity nearest = NullEntity;
     float nearestDist = maxRange * maxRange;
 
-    auto& registry = const_cast<Registry&>(getRegistry());
-    registry.each<PlayerTag, Transform>([&](Entity player, const PlayerTag&,
-                                             const Transform& pt) {
+    const auto& registry = getRegistry();
+    auto view = registry.view<PlayerTag, Transform>();
+    for (auto entity : view) {
+        const auto& pt = registry.get<Transform>(entity);
         float dx = pt.position.x - position.x;
         float dy = pt.position.y - position.y;
         float distSq = dx * dx + dy * dy;
         if (distSq < nearestDist) {
             nearestDist = distSq;
-            nearest = player;
+            nearest = entity;
         }
-    });
+    }
 
     return nearest;
 }

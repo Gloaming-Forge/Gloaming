@@ -665,6 +665,19 @@ std::vector<std::string> ContentRegistry::getShopIds() const {
     return ids;
 }
 
+void ContentRegistry::validateNPCReferences() const {
+    for (const auto& [qid, npc] : m_npcs) {
+        if (!npc.dialogueId.empty() && !hasDialogueTree(npc.dialogueId)) {
+            LOG_WARN("ContentRegistry: NPC '{}' references unknown dialogue tree '{}'",
+                     qid, npc.dialogueId);
+        }
+        if (!npc.shopId.empty() && !hasShop(npc.shopId)) {
+            LOG_WARN("ContentRegistry: NPC '{}' references unknown shop '{}'",
+                     qid, npc.shopId);
+        }
+    }
+}
+
 void ContentRegistry::clear() {
     m_tiles.clear();
     m_runtimeToTile.clear();

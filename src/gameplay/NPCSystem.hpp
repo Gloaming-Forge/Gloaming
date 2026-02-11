@@ -55,6 +55,7 @@ struct NPCAI {
     float wanderTimer = 0.0f;
     float wanderPauseTimer = 0.0f;
     int wanderDirection = 0;             // -1 = left, 0 = still, 1 = right
+    int wanderDirectionY = 0;            // -1 = up, 0 = still, 1 = down (top-down only)
 
     // Interaction state
     bool playerInRange = false;

@@ -5,6 +5,7 @@
 #include "mod/EventBus.hpp"
 #include "world/TileMap.hpp"
 
+#include <algorithm>
 #include <queue>
 #include <unordered_set>
 
@@ -38,6 +39,23 @@ void HousingSystem::update(float dt) {
         room.hasFurniture = recheck.hasFurniture;
         room.isValid = recheck.isValid;
     }
+
+    // Evict rooms that are no longer valid (unassign NPC first via event)
+    m_rooms.erase(
+        std::remove_if(m_rooms.begin(), m_rooms.end(),
+            [this](const ValidatedRoom& room) {
+                if (!room.isValid) {
+                    if (m_eventBus && room.assignedNPC != NullEntity) {
+                        EventData data;
+                        data.setInt("room_id", room.id);
+                        data.setInt("npc_entity", static_cast<int>(room.assignedNPC));
+                        m_eventBus->emit("housing_room_invalidated", data);
+                    }
+                    return true;
+                }
+                return false;
+            }),
+        m_rooms.end());
 }
 
 void HousingSystem::shutdown() {
@@ -66,7 +84,6 @@ ValidatedRoom HousingSystem::validateRoom(int tileX, int tileY) {
     bool hasDoor = false;
     bool hasLight = false;
     bool hasFurniture = false;
-    bool enclosed = true;
 
     while (!frontier.empty()) {
         if (static_cast<int>(visited.size()) > maxTiles) {
@@ -119,9 +136,16 @@ ValidatedRoom HousingSystem::validateRoom(int tileX, int tileY) {
         return result;
     }
 
-    // Verify enclosure: all border cells of the bounding box must be solid or visited
-    // (A simpler check: if we didn't exceed maxTiles, the room is bounded.)
-    // The flood fill already handles this — if it didn't overflow, the room is enclosed.
+    // Verify enclosure: every non-solid interior tile on the bounding-box perimeter
+    // must have a solid neighbor just outside the bounding box in the outward direction.
+    // This catches gaps where the BFS terminated within maxTiles but walls are incomplete.
+    for (const auto& pos : visited) {
+        if (m_tileMap->isSolid(pos.x, pos.y)) continue;
+        if (pos.x == minX && !m_tileMap->isSolid(pos.x - 1, pos.y)) return result;
+        if (pos.x == maxX && !m_tileMap->isSolid(pos.x + 1, pos.y)) return result;
+        if (pos.y == minY && !m_tileMap->isSolid(pos.x, pos.y - 1)) return result;
+        if (pos.y == maxY && !m_tileMap->isSolid(pos.x, pos.y + 1)) return result;
+    }
 
     result.topLeft = {minX, minY};
     result.bottomRight = {maxX, maxY};
@@ -180,10 +204,10 @@ std::vector<ValidatedRoom> HousingSystem::scanForRooms(float centerX, float cent
                 // Check if this room overlaps with an existing cached room
                 bool duplicate = false;
                 for (const auto& existing : m_rooms) {
-                    if (existing.topLeft.x == room.topLeft.x &&
-                        existing.topLeft.y == room.topLeft.y &&
-                        existing.bottomRight.x == room.bottomRight.x &&
-                        existing.bottomRight.y == room.bottomRight.y) {
+                    if (room.topLeft.x <= existing.bottomRight.x &&
+                        room.bottomRight.x >= existing.topLeft.x &&
+                        room.topLeft.y <= existing.bottomRight.y &&
+                        room.bottomRight.y >= existing.topLeft.y) {
                         duplicate = true;
                         break;
                     }

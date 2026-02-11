@@ -280,6 +280,7 @@ bool Engine::init(const std::string& configPath) {
             if (m_modLoader.resolveDependencies()) {
                 int loaded = m_modLoader.loadMods();
                 m_modLoader.postInitMods();
+                m_modLoader.getContentRegistry().validateNPCReferences();
                 LOG_INFO("Mod system: {}/{} mods loaded successfully", loaded, discovered);
             }
         } else {
