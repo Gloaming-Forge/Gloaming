@@ -4,7 +4,7 @@
 #include "engine/Log.hpp"
 
 #include <algorithm>
-#include <cstdlib>
+#include <random>
 #include <unordered_map>
 
 namespace gloaming {
@@ -236,7 +236,9 @@ void TweenSystem::setPropertyValue(Entity entity, TweenProperty property,
 }
 
 float TweenSystem::randomNormalized() {
-    return (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
+    static thread_local std::mt19937 rng{std::random_device{}()};
+    static thread_local std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    return dist(rng);
 }
 
 } // namespace gloaming

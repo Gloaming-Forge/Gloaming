@@ -7,9 +7,9 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
 #include <cstdint>
 #include <functional>
+#include <random>
 
 namespace gloaming {
 
@@ -113,6 +113,7 @@ struct Particle {
     ColorF colorEnd;
     SizeCurve sizeCurve;
     float gravity = 0.0f;
+    EmitterId emitterId = InvalidEmitterId; // Which emitter spawned this particle
     bool alive = false;
 };
 
@@ -123,6 +124,7 @@ struct EmitterInstance {
     Vec2 position{0.0f, 0.0f};     // World position (or camera-relative if followCamera)
     Entity entity = NullEntity;     // Attached entity (NullEntity = world position)
     float emitAccumulator = 0.0f;   // Fractional particle accumulation for continuous mode
+    float deathTimer = 0.0f;        // Timer counting up after emitter stops, for cleanup
     bool active = true;             // If false, stops emitting but existing particles continue
     bool alive = true;              // If false, marked for removal once all particles die
 };
@@ -190,16 +192,22 @@ private:
     /// Emit particles from an emitter
     void emitParticles(EmitterInstance& emitter, int count);
 
-    /// Get or allocate a particle slot from the pool
+    /// Get or allocate a particle slot from the pool (O(1) via free-list)
     Particle* allocateParticle();
 
+    /// Return a particle slot to the free-list
+    void freeParticle(size_t index);
+
     /// Random float in range
-    static float randomRange(float min, float max);
+    float randomRange(float min, float max);
 
     std::vector<EmitterInstance> m_emitters;
     std::vector<Particle> m_particles;
+    std::vector<size_t> m_freeList;          // Indices of dead particles for O(1) allocation
     size_t m_maxParticles = 10000;
     EmitterId m_nextId = 1;
+    std::mt19937 m_rng{std::random_device{}()};
+    std::uniform_real_distribution<float> m_dist{0.0f, 1.0f};
 };
 
 } // namespace gloaming

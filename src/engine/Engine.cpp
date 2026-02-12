@@ -222,7 +222,7 @@ bool Engine::init(const std::string& configPath) {
         m_shopManager.setContentRegistry(&m_modLoader.getContentRegistry());
         m_shopManager.setEventBus(&m_modLoader.getEventBus());
 
-        // Particle system (Stage 17) — runs in Render phase so particles update before drawing
+        // Particle system (Stage 17) — runs in Update phase; rendering is called separately
         m_particleSystem = m_systemScheduler.addSystem<ParticleSystem>(SystemPhase::Update);
 
         // Scene, Timer & Save systems (Stage 16)
@@ -424,11 +424,21 @@ void Engine::update(double dt) {
 }
 
 void Engine::render() {
-    // Apply camera shake offset before rendering
+    // Apply camera shake offset before rendering, with RAII guard to ensure undo
     Vec2 shakeOffset = m_tweenSystem.getShakeOffset();
-    if (shakeOffset.x != 0.0f || shakeOffset.y != 0.0f) {
+    bool hasShake = (shakeOffset.x != 0.0f || shakeOffset.y != 0.0f);
+    if (hasShake) {
         m_camera.move(shakeOffset.x, shakeOffset.y);
     }
+    // RAII guard: undo camera shake on scope exit (even if an exception occurs)
+    struct ShakeGuard {
+        Camera& camera;
+        Vec2 offset;
+        bool active;
+        ~ShakeGuard() {
+            if (active) camera.move(-offset.x, -offset.y);
+        }
+    } shakeGuard{m_camera, shakeOffset, hasShake};
 
     m_renderer->beginFrame();
     m_renderer->clear(Color(20, 20, 30, 255));
@@ -604,11 +614,7 @@ void Engine::render() {
                          {20, 380}, 16, Color::Gray());
 
     m_renderer->endFrame();
-
-    // Undo camera shake offset after rendering so it doesn't accumulate
-    if (shakeOffset.x != 0.0f || shakeOffset.y != 0.0f) {
-        m_camera.move(-shakeOffset.x, -shakeOffset.y);
-    }
+    // Camera shake offset is automatically undone by ShakeGuard destructor
 }
 
 void Engine::shutdown() {

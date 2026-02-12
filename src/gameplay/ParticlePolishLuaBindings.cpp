@@ -5,6 +5,8 @@
 #include "gameplay/TweenSystem.hpp"
 #include "gameplay/DebugDrawSystem.hpp"
 
+#include <algorithm>
+
 namespace gloaming {
 
 /// Helper: read a Color from a Lua table { r, g, b, a }
@@ -18,14 +20,18 @@ static ColorF readColorF(const sol::table& tbl) {
 }
 
 /// Helper: read a Color from a Lua table for debug drawing
+/// Reads as float (Lua's native number type) and clamps to [0, 255].
 static Color readColor(const sol::optional<sol::table>& optTbl) {
     if (!optTbl) return Color::Green();
     const auto& tbl = *optTbl;
+    auto clampByte = [](float v) -> uint8_t {
+        return static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, v)));
+    };
     return Color(
-        tbl.get_or<uint8_t>("r", 0),
-        tbl.get_or<uint8_t>("g", 255),
-        tbl.get_or<uint8_t>("b", 0),
-        tbl.get_or<uint8_t>("a", 255)
+        clampByte(tbl.get_or("r", 0.0f)),
+        clampByte(tbl.get_or("g", 255.0f)),
+        clampByte(tbl.get_or("b", 0.0f)),
+        clampByte(tbl.get_or("a", 255.0f))
     );
 }
 
@@ -206,35 +212,42 @@ void bindParticlePolishAPI(sol::state& lua, Engine& engine,
         // Return the last one's ID, or a table of IDs.
         TweenId lastId = InvalidTweenId;
 
-        // Map Lua property names to TweenProperty enum
-        struct PropMapping {
-            const char* name;
+        // Collect which properties need tweening, handling 'scale' specially.
+        // 'scale' sets both ScaleX and ScaleY but must not conflict with
+        // explicit scale_x/scale_y if those are also provided.
+        struct TweenEntry {
             TweenProperty prop;
+            float value;
         };
-        static const PropMapping mappings[] = {
-            {"x",       TweenProperty::X},
-            {"y",       TweenProperty::Y},
-            {"rotation", TweenProperty::Rotation},
-            {"scale_x", TweenProperty::ScaleX},
-            {"scale_y", TweenProperty::ScaleY},
-            {"scale",   TweenProperty::ScaleX}, // 'scale' tweens both X and Y
-            {"alpha",   TweenProperty::Alpha},
-        };
+        std::vector<TweenEntry> entries;
 
-        // Count how many properties are being tweened
-        int propCount = 0;
-        for (const auto& m : mappings) {
-            sol::optional<float> val = properties.get<sol::optional<float>>(m.name);
-            if (val) ++propCount;
+        sol::optional<float> valX = properties.get<sol::optional<float>>("x");
+        sol::optional<float> valY = properties.get<sol::optional<float>>("y");
+        sol::optional<float> valRot = properties.get<sol::optional<float>>("rotation");
+        sol::optional<float> valSx = properties.get<sol::optional<float>>("scale_x");
+        sol::optional<float> valSy = properties.get<sol::optional<float>>("scale_y");
+        sol::optional<float> valScale = properties.get<sol::optional<float>>("scale");
+        sol::optional<float> valAlpha = properties.get<sol::optional<float>>("alpha");
+
+        if (valX) entries.push_back({TweenProperty::X, *valX});
+        if (valY) entries.push_back({TweenProperty::Y, *valY});
+        if (valRot) entries.push_back({TweenProperty::Rotation, *valRot});
+        // Explicit scale_x/scale_y take priority over 'scale'
+        if (valSx) {
+            entries.push_back({TweenProperty::ScaleX, *valSx});
+        } else if (valScale) {
+            entries.push_back({TweenProperty::ScaleX, *valScale});
         }
+        if (valSy) {
+            entries.push_back({TweenProperty::ScaleY, *valSy});
+        } else if (valScale) {
+            entries.push_back({TweenProperty::ScaleY, *valScale});
+        }
+        if (valAlpha) entries.push_back({TweenProperty::Alpha, *valAlpha});
 
-        int propIdx = 0;
-        for (const auto& m : mappings) {
-            sol::optional<float> val = properties.get<sol::optional<float>>(m.name);
-            if (!val) continue;
-
-            ++propIdx;
-            bool isLast = (propIdx == propCount);
+        int propCount = static_cast<int>(entries.size());
+        for (int i = 0; i < propCount; ++i) {
+            bool isLast = (i == propCount - 1);
 
             // Only attach completion callback to the last property tween
             std::function<void()> completionCb = nullptr;
@@ -248,14 +261,8 @@ void bindParticlePolishAPI(sol::state& lua, Engine& engine,
                 };
             }
 
-            lastId = tweenSystem.tweenTo(entity, m.prop, *val,
+            lastId = tweenSystem.tweenTo(entity, entries[i].prop, entries[i].value,
                                           duration, easing, std::move(completionCb));
-
-            // Handle 'scale' which tweens both X and Y
-            if (std::string(m.name) == "scale") {
-                tweenSystem.tweenTo(entity, TweenProperty::ScaleY, *val,
-                                    duration, easing, nullptr);
-            }
         }
 
         return sol::make_object(properties.lua_state(), lastId);

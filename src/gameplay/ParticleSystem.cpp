@@ -5,7 +5,6 @@
 #include "ecs/Components.hpp"
 
 #include <cmath>
-#include <cstdlib>
 #include <algorithm>
 
 namespace gloaming {
@@ -13,6 +12,11 @@ namespace gloaming {
 ParticleSystem::ParticleSystem()
     : System("ParticleSystem", 0) {
     m_particles.resize(1000); // Initial pool size
+    // Initialize free-list with all indices (all particles start dead)
+    m_freeList.reserve(1000);
+    for (size_t i = 0; i < 1000; ++i) {
+        m_freeList.push_back(i);
+    }
 }
 
 void ParticleSystem::init(Registry& registry, Engine& engine) {
@@ -52,17 +56,16 @@ void ParticleSystem::update(float dt) {
     }
 
     // Update all particles
-    bool anyAlive = false;
-    for (auto& particle : m_particles) {
+    for (size_t i = 0; i < m_particles.size(); ++i) {
+        auto& particle = m_particles[i];
         if (!particle.alive) continue;
 
         particle.age += dt;
         if (particle.age >= particle.lifetime) {
             particle.alive = false;
+            freeParticle(i);
             continue;
         }
-
-        anyAlive = true;
 
         // Apply gravity
         if (particle.gravity != 0.0f) {
@@ -78,17 +81,15 @@ void ParticleSystem::update(float dt) {
     }
 
     // Clean up dead emitters (not active + no alive particles from them)
-    // We track this by checking if the emitter is not active; once all particles
-    // from it die naturally, it can be removed. For simplicity, we mark emitters
-    // as !alive when they're stopped and have been around long enough.
+    // Use a separate deathTimer to track how long since the emitter stopped.
     for (auto& emitter : m_emitters) {
         if (!emitter.alive) continue;
         if (!emitter.active) {
             // Check if enough time has passed for all particles to die
             // Use max lifetime from config as a conservative bound
             float maxLife = emitter.config.lifetime.max;
-            emitter.emitAccumulator += dt; // reuse accumulator as death timer
-            if (emitter.emitAccumulator >= maxLife + 0.1f) {
+            emitter.deathTimer += dt;
+            if (emitter.deathTimer >= maxLife + 0.1f) {
                 emitter.alive = false;
             }
         }
@@ -188,7 +189,7 @@ void ParticleSystem::stopEmitter(EmitterId id) {
     for (auto& emitter : m_emitters) {
         if (emitter.id == id && emitter.alive) {
             emitter.active = false;
-            emitter.emitAccumulator = 0.0f; // Reset for use as death timer
+            emitter.deathTimer = 0.0f;
             return;
         }
     }
@@ -199,6 +200,13 @@ void ParticleSystem::destroyEmitter(EmitterId id) {
         if (emitter.id == id) {
             emitter.alive = false;
             emitter.active = false;
+            // Kill all particles belonging to this emitter
+            for (size_t i = 0; i < m_particles.size(); ++i) {
+                if (m_particles[i].alive && m_particles[i].emitterId == id) {
+                    m_particles[i].alive = false;
+                    freeParticle(i);
+                }
+            }
             return;
         }
     }
@@ -225,7 +233,7 @@ void ParticleSystem::removeEmittersForEntity(Entity entity) {
         if (emitter.entity == entity) {
             emitter.active = false;
             emitter.entity = NullEntity;
-            emitter.emitAccumulator = 0.0f;
+            emitter.deathTimer = 0.0f;
         }
     }
 }
@@ -249,6 +257,7 @@ void ParticleSystem::emitParticles(EmitterInstance& emitter, int count) {
 
         p->alive = true;
         p->age = 0.0f;
+        p->emitterId = emitter.id;
 
         // Position: emitter position + random spread for area emitters
         p->position = emitter.position;
@@ -284,25 +293,35 @@ void ParticleSystem::emitParticles(EmitterInstance& emitter, int count) {
 }
 
 Particle* ParticleSystem::allocateParticle() {
-    // Find a dead particle to reuse
-    for (auto& p : m_particles) {
-        if (!p.alive) return &p;
+    // O(1) allocation from the free-list
+    if (!m_freeList.empty()) {
+        size_t idx = m_freeList.back();
+        m_freeList.pop_back();
+        return &m_particles[idx];
     }
 
-    // Pool is full — grow if under limit
+    // Free-list empty — grow pool if under limit
     if (m_particles.size() < m_maxParticles) {
-        size_t newSize = std::min(m_particles.size() * 2, m_maxParticles);
         size_t oldSize = m_particles.size();
+        size_t newSize = std::min(m_particles.size() * 2, m_maxParticles);
         m_particles.resize(newSize);
-        return &m_particles[oldSize]; // Return first new slot
+        // Add new slots (except the first one we'll return) to free-list
+        for (size_t i = oldSize + 1; i < newSize; ++i) {
+            m_freeList.push_back(i);
+        }
+        return &m_particles[oldSize];
     }
 
     return nullptr; // At capacity
 }
 
+void ParticleSystem::freeParticle(size_t index) {
+    m_freeList.push_back(index);
+}
+
 float ParticleSystem::randomRange(float min, float max) {
     if (min >= max) return min;
-    float t = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
+    float t = m_dist(m_rng);
     return min + t * (max - min);
 }
 

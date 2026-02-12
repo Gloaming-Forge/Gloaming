@@ -154,10 +154,10 @@ TEST_F(TweenSystemTest, CameraShake) {
     EXPECT_TRUE(tweenSystem.isShaking());
 
     tweenSystem.update(0.1f, registry);
-    Vec2 offset = tweenSystem.getShakeOffset();
     // Offset should be non-zero during shake
     // (probabilistic, but with intensity 10 it's very unlikely to be exactly 0)
     EXPECT_TRUE(tweenSystem.isShaking());
+    (void)tweenSystem.getShakeOffset(); // Verify it doesn't crash
 
     // Finish the shake
     tweenSystem.update(0.5f, registry);
