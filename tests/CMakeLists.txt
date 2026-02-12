@@ -29,6 +29,7 @@ add_executable(gloaming_tests
     test_enemies.cpp
     test_npcs.cpp
     test_scenes_timers_save.cpp
+    test_particles_polish.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

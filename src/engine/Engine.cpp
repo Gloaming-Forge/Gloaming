@@ -10,6 +10,7 @@
 #include "gameplay/EnemyLuaBindings.hpp"
 #include "gameplay/NPCLuaBindings.hpp"
 #include "gameplay/SceneTimerSaveLuaBindings.hpp"
+#include "gameplay/ParticlePolishLuaBindings.hpp"
 #include "world/WorldGenLuaBindings.hpp"
 
 #include <raylib.h>
@@ -221,6 +222,9 @@ bool Engine::init(const std::string& configPath) {
         m_shopManager.setContentRegistry(&m_modLoader.getContentRegistry());
         m_shopManager.setEventBus(&m_modLoader.getEventBus());
 
+        // Particle system (Stage 17) — runs in Update phase; rendering is called separately
+        m_particleSystem = m_systemScheduler.addSystem<ParticleSystem>(SystemPhase::Update);
+
         // Scene, Timer & Save systems (Stage 16)
         m_sceneManager.init(*this);
         // TimerSystem and SaveSystem don't need engine-level init() — they're configured later
@@ -237,7 +241,8 @@ bool Engine::init(const std::string& configPath) {
                  "item drops, tool use, melee attack, combat, crafting, "
                  "enemy AI, enemy spawning, loot drops, "
                  "NPCs, housing, shops, "
-                 "scenes, timers, save state)");
+                 "scenes, timers, save state, "
+                 "particles, tweens, debug drawing)");
     }
 
     // Initialize mod system
@@ -290,7 +295,14 @@ bool Engine::init(const std::string& configPath) {
             m_modLoader.getLuaBindings().getState(),
             *this, m_sceneManager, m_timerSystem, m_saveSystem);
 
-        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, and scene/timer/save Lua APIs registered");
+        // Register Particle, Tween & Debug Lua APIs (Stage 17)
+        if (m_particleSystem) {
+            bindParticlePolishAPI(
+                m_modLoader.getLuaBindings().getState(),
+                *this, *m_particleSystem, m_tweenSystem, m_debugDrawSystem);
+        }
+
+        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, scene/timer/save, and particle/tween/debug Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -334,6 +346,12 @@ void Engine::processInput() {
         m_window.toggleFullscreen();
     }
 
+    // Toggle debug drawing (F3)
+    if (m_input.isKeyPressed(KEY_F3)) {
+        m_debugDrawSystem.toggle();
+        LOG_INFO("Debug drawing {}", m_debugDrawSystem.isEnabled() ? "enabled" : "disabled");
+    }
+
     // Toggle lighting system
     if (m_input.isKeyPressed(KEY_L) && m_lightingSystem) {
         bool wasEnabled = m_lightingSystem->getConfig().enabled;
@@ -362,6 +380,9 @@ void Engine::update(double dt) {
 
     // Update timers (paused when overlay scenes are active)
     m_timerSystem.update(dtFloat, m_registry, m_sceneManager.isPausedByOverlay());
+
+    // Update tweens
+    m_tweenSystem.update(dtFloat, m_registry);
 
     // Handle camera controls for testing (Stage 1 demo)
     // Only active when no mod has assigned a CameraTarget to any entity.
@@ -403,6 +424,22 @@ void Engine::update(double dt) {
 }
 
 void Engine::render() {
+    // Apply camera shake offset before rendering, with RAII guard to ensure undo
+    Vec2 shakeOffset = m_tweenSystem.getShakeOffset();
+    bool hasShake = (shakeOffset.x != 0.0f || shakeOffset.y != 0.0f);
+    if (hasShake) {
+        m_camera.move(shakeOffset.x, shakeOffset.y);
+    }
+    // RAII guard: undo camera shake on scope exit (even if an exception occurs)
+    struct ShakeGuard {
+        Camera& camera;
+        Vec2 offset;
+        bool active;
+        ~ShakeGuard() {
+            if (active) camera.move(-offset.x, -offset.y);
+        }
+    } shakeGuard{m_camera, shakeOffset, hasShake};
+
     m_renderer->beginFrame();
     m_renderer->clear(Color(20, 20, 30, 255));
 
@@ -427,10 +464,18 @@ void Engine::render() {
     m_tileLayers.renderLayer(m_tileRenderer, m_camera,
                              static_cast<int>(TileLayerIndex::Foreground));
 
+    // Render particles (after entities, before lighting)
+    if (m_particleSystem) {
+        m_particleSystem->render(m_renderer.get(), m_camera);
+    }
+
     // Render lighting overlay (after tiles and sprites, before UI)
     if (m_lightingSystem) {
         m_lightingSystem->renderLightOverlay(m_renderer.get(), m_camera);
     }
+
+    // Render debug draw overlay (after lighting, visible over everything in world)
+    m_debugDrawSystem.render(m_renderer.get(), m_camera);
 
     // Render UI screens (after lighting overlay, on top of everything)
     m_uiSystem.render();
@@ -444,7 +489,7 @@ void Engine::render() {
     m_sceneManager.renderTransition(m_renderer.get());
 
     // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.5.0 - Stage 16: Scenes, Timers & Save State", {20, 20}, 20, Color::White());
+    m_renderer->drawText("Gloaming Engine v0.5.0 - Stage 17: Particles & Polish", {20, 20}, 20, Color::White());
 
     char fpsText[64];
     snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
@@ -552,10 +597,24 @@ void Engine::render() {
         m_renderer->drawText(stageText, {20, 320}, 16, Color(200, 255, 200, 255));
     }
 
-    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F11: Fullscreen",
-                         {20, 350}, 16, Color::Gray());
+    // Particle, Tween & Debug info (Stage 17)
+    {
+        char polishText[256];
+        auto pStats = m_particleSystem ? m_particleSystem->getStats()
+                                       : ParticleSystem::Stats{};
+        snprintf(polishText, sizeof(polishText),
+                 "Particles: %zu emitters, %zu alive | Tweens: %zu active | Debug: %s",
+                 pStats.activeEmitters, pStats.activeParticles,
+                 m_tweenSystem.activeCount(),
+                 m_debugDrawSystem.isEnabled() ? "on" : "off");
+        m_renderer->drawText(polishText, {20, 350}, 16, Color(255, 200, 150, 255));
+    }
+
+    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F3: Debug draw | F11: Fullscreen",
+                         {20, 380}, 16, Color::Gray());
 
     m_renderer->endFrame();
+    // Camera shake offset is automatically undone by ShakeGuard destructor
 }
 
 void Engine::shutdown() {
@@ -573,8 +632,9 @@ void Engine::shutdown() {
         m_saveSystem.saveAll();
     }
 
-    // Clear timers
+    // Clear timers and tweens
     m_timerSystem.clear();
+    m_tweenSystem.clear();
 
     // Close world (auto-saves if enabled)
     if (m_tileMap.isWorldLoaded()) {

@@ -152,6 +152,11 @@ add_library(gloaming_engine STATIC
     src/gameplay/TimerSystem.cpp
     src/gameplay/SaveSystem.cpp
     src/gameplay/SceneTimerSaveLuaBindings.cpp
+    # Particles & Polish (Stage 17)
+    src/gameplay/ParticleSystem.cpp
+    src/gameplay/TweenSystem.cpp
+    src/gameplay/DebugDrawSystem.cpp
+    src/gameplay/ParticlePolishLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

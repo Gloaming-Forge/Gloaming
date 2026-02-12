@@ -48,6 +48,12 @@ public:
     void drawRectangleOutline(const Rect& rect, const Color& color,
                               float thickness = 1.0f) override;
 
+    void drawLine(Vec2 start, Vec2 end, const Color& color,
+                  float thickness = 1.0f) override;
+    void drawCircle(Vec2 center, float radius, const Color& color) override;
+    void drawCircleOutline(Vec2 center, float radius, const Color& color,
+                           float thickness = 1.0f) override;
+
     void drawText(const std::string& text, Vec2 position, int fontSize,
                  const Color& color) override;
 

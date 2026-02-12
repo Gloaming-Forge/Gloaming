@@ -170,6 +170,30 @@ void RaylibRenderer::drawRectangleOutline(const Rect& rect, const Color& color,
     DrawRectangleLinesEx(toRaylibRect(rect), thickness, toRaylibColor(color));
 }
 
+void RaylibRenderer::drawLine(Vec2 start, Vec2 end, const Color& color,
+                              float thickness) {
+    DrawLineEx(toRaylibVec2(start), toRaylibVec2(end), thickness, toRaylibColor(color));
+}
+
+void RaylibRenderer::drawCircle(Vec2 center, float radius, const Color& color) {
+    DrawCircle(static_cast<int>(center.x), static_cast<int>(center.y),
+               radius, toRaylibColor(color));
+}
+
+void RaylibRenderer::drawCircleOutline(Vec2 center, float radius, const Color& color,
+                                       float thickness) {
+    // Raylib doesn't have a thick circle outline, so use DrawCircleLinesV for thin
+    // and DrawRing for thick outlines
+    if (thickness <= 1.0f) {
+        DrawCircleLines(static_cast<int>(center.x), static_cast<int>(center.y),
+                        radius, toRaylibColor(color));
+    } else {
+        DrawRing(toRaylibVec2(center), radius - thickness * 0.5f,
+                 radius + thickness * 0.5f, 0.0f, 360.0f, 36,
+                 toRaylibColor(color));
+    }
+}
+
 void RaylibRenderer::drawText(const std::string& text, Vec2 position,
                               int fontSize, const Color& color) {
     DrawText(text.c_str(), static_cast<int>(position.x), static_cast<int>(position.y),
