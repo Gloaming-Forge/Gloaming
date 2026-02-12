@@ -1,5 +1,6 @@
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
+#include "engine/PolishLuaBindings.hpp"
 #include "rendering/RaylibRenderer.hpp"
 #include "ecs/CoreSystems.hpp"
 #include "gameplay/Gameplay.hpp"
@@ -302,7 +303,12 @@ bool Engine::init(const std::string& configPath) {
                 *this, *m_particleSystem, m_tweenSystem, m_debugDrawSystem);
         }
 
-        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, scene/timer/save, and particle/tween/debug Lua APIs registered");
+        // Register Profiler, Resource Manager & Diagnostics Lua APIs (Stage 18)
+        bindPolishAPI(
+            m_modLoader.getLuaBindings().getState(),
+            *this, m_profiler, m_resourceManager, m_diagnosticOverlay);
+
+        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, scene/timer/save, particle/tween/debug, and profiler/resource/diagnostics Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -319,8 +325,18 @@ bool Engine::init(const std::string& configPath) {
         LOG_WARN("Mod system failed to initialize (non-fatal, continuing without mods)");
     }
 
+    // Initialize profiler and diagnostics (Stage 18)
+    {
+        int targetFPS = m_config.getInt("profiler.target_fps", 60);
+        m_profiler.setTargetFPS(targetFPS);
+        m_profiler.setEnabled(m_config.getBool("profiler.enabled", true));
+
+        LOG_INFO("Profiler initialized (target={}fps, budget={:.2f}ms, enabled={})",
+                 targetFPS, m_profiler.frameBudgetMs(), m_profiler.isEnabled());
+    }
+
     m_running = true;
-    LOG_INFO("Engine initialized successfully");
+    LOG_INFO("Engine initialized successfully — Stage 18: Polish & Release");
     return true;
 }
 
@@ -328,12 +344,25 @@ void Engine::run() {
     LOG_INFO("Entering main loop");
 
     while (m_running && !m_window.shouldClose()) {
+        m_profiler.beginFrame();
+
         double dt = static_cast<double>(GetFrameTime());
         m_time.update(dt);
 
-        processInput();
-        update(m_time.deltaTime());
-        render();
+        {
+            auto z = m_profiler.scopedZone("Input");
+            processInput();
+        }
+        {
+            auto z = m_profiler.scopedZone("Update");
+            update(m_time.deltaTime());
+        }
+        {
+            auto z = m_profiler.scopedZone("Render");
+            render();
+        }
+
+        m_profiler.endFrame();
     }
 
     LOG_INFO("Main loop exited");
@@ -346,10 +375,25 @@ void Engine::processInput() {
         m_window.toggleFullscreen();
     }
 
+    // Cycle diagnostic overlay (F2)
+    if (m_input.isKeyPressed(KEY_F2)) {
+        m_diagnosticOverlay.cycle();
+        const char* modeStr = "off";
+        if (m_diagnosticOverlay.getMode() == DiagnosticMode::Minimal) modeStr = "minimal";
+        else if (m_diagnosticOverlay.getMode() == DiagnosticMode::Full) modeStr = "full";
+        LOG_INFO("Diagnostic overlay: {}", modeStr);
+    }
+
     // Toggle debug drawing (F3)
     if (m_input.isKeyPressed(KEY_F3)) {
         m_debugDrawSystem.toggle();
         LOG_INFO("Debug drawing {}", m_debugDrawSystem.isEnabled() ? "enabled" : "disabled");
+    }
+
+    // Toggle profiler (F4)
+    if (m_input.isKeyPressed(KEY_F4)) {
+        m_profiler.toggle();
+        LOG_INFO("Profiler {}", m_profiler.isEnabled() ? "enabled" : "disabled");
     }
 
     // Toggle lighting system
@@ -488,130 +532,147 @@ void Engine::render() {
     // Render scene transition overlay (on top of everything)
     m_sceneManager.renderTransition(m_renderer.get());
 
-    // Draw basic info text using renderer
-    m_renderer->drawText("Gloaming Engine v0.5.0 - Stage 17: Particles & Polish", {20, 20}, 20, Color::White());
+    // Render diagnostic overlay (Stage 18) — replaces old HUD when active
+    if (m_diagnosticOverlay.isVisible()) {
+        m_diagnosticOverlay.render(m_renderer.get(), m_profiler, m_resourceManager, *this);
+    } else {
+        // Default HUD (when diagnostics overlay is off)
+        m_renderer->drawText("Gloaming Engine v0.5.0 - Stage 18: Polish & Release", {20, 20}, 20, Color::White());
 
-    char fpsText[64];
-    snprintf(fpsText, sizeof(fpsText), "FPS: %d", GetFPS());
-    m_renderer->drawText(fpsText, {20, 50}, 16, Color::Green());
+        char fpsText[64];
+        snprintf(fpsText, sizeof(fpsText), "FPS: %d  (%.2f ms)", GetFPS(), m_profiler.frameTimeMs());
+        m_renderer->drawText(fpsText, {20, 50}, 16, Color::Green());
 
-    // Camera info
-    Vec2 camPos = m_camera.getPosition();
-    char camText[128];
-    snprintf(camText, sizeof(camText), "Camera: (%.1f, %.1f) Zoom: %.2f",
-             camPos.x, camPos.y, m_camera.getZoom());
-    m_renderer->drawText(camText, {20, 80}, 16, Color(100, 200, 255, 255));
+        // Camera info
+        Vec2 camPos = m_camera.getPosition();
+        char camText[128];
+        snprintf(camText, sizeof(camText), "Camera: (%.1f, %.1f) Zoom: %.2f",
+                 camPos.x, camPos.y, m_camera.getZoom());
+        m_renderer->drawText(camText, {20, 80}, 16, Color(100, 200, 255, 255));
 
-    // Chunk info
-    if (m_tileMap.isWorldLoaded()) {
-        const auto& stats = m_tileMap.getStats();
-        char chunkText[128];
-        snprintf(chunkText, sizeof(chunkText), "Chunks: %zu loaded | %zu dirty | Rendered: %zu tiles",
-                 stats.loadedChunks, stats.dirtyChunks, m_tileRenderer.getTilesRendered());
-        m_renderer->drawText(chunkText, {20, 110}, 16, Color(200, 200, 100, 255));
-    }
-
-    // Mod info
-    char modText[192];
-    snprintf(modText, sizeof(modText),
-             "Mods: %zu loaded | Content: %zu tiles, %zu items, %zu enemies, %zu npcs, %zu shops",
-             m_modLoader.loadedCount(),
-             m_modLoader.getContentRegistry().tileCount(),
-             m_modLoader.getContentRegistry().itemCount(),
-             m_modLoader.getContentRegistry().enemyCount(),
-             m_modLoader.getContentRegistry().npcCount(),
-             m_modLoader.getContentRegistry().shopCount());
-    m_renderer->drawText(modText, {20, 140}, 16, Color(200, 150, 255, 255));
-
-    // Lighting info
-    if (m_lightingSystem) {
-        const auto& lStats = m_lightingSystem->getStats();
-        const auto& dnc = m_lightingSystem->getDayNightCycle();
-        const char* todStr = "?";
-        switch (dnc.getTimeOfDay()) {
-            case TimeOfDay::Dawn:  todStr = "Dawn";  break;
-            case TimeOfDay::Day:   todStr = "Day";   break;
-            case TimeOfDay::Dusk:  todStr = "Dusk";  break;
-            case TimeOfDay::Night: todStr = "Night"; break;
+        // Chunk info
+        if (m_tileMap.isWorldLoaded()) {
+            const auto& stats = m_tileMap.getStats();
+            char chunkText[128];
+            snprintf(chunkText, sizeof(chunkText), "Chunks: %zu loaded | %zu dirty | Rendered: %zu tiles",
+                     stats.loadedChunks, stats.dirtyChunks, m_tileRenderer.getTilesRendered());
+            m_renderer->drawText(chunkText, {20, 110}, 16, Color(200, 200, 100, 255));
         }
-        char lightText[192];
-        snprintf(lightText, sizeof(lightText),
-                 "Light: %zu sources | %zu tiles | %.1fms | %s (%.0f%% bright) | Day %d",
-                 lStats.pointLightCount, lStats.tilesLit, lStats.lastRecalcTimeMs,
-                 todStr, lStats.skyBrightness * 100.0f, dnc.getDayCount());
-        m_renderer->drawText(lightText, {20, 170}, 16, Color(255, 220, 100, 255));
+
+        // Mod info
+        char modText[192];
+        snprintf(modText, sizeof(modText),
+                 "Mods: %zu loaded | Content: %zu tiles, %zu items, %zu enemies, %zu npcs, %zu shops",
+                 m_modLoader.loadedCount(),
+                 m_modLoader.getContentRegistry().tileCount(),
+                 m_modLoader.getContentRegistry().itemCount(),
+                 m_modLoader.getContentRegistry().enemyCount(),
+                 m_modLoader.getContentRegistry().npcCount(),
+                 m_modLoader.getContentRegistry().shopCount());
+        m_renderer->drawText(modText, {20, 140}, 16, Color(200, 150, 255, 255));
+
+        // Lighting info
+        if (m_lightingSystem) {
+            const auto& lStats = m_lightingSystem->getStats();
+            const auto& dnc = m_lightingSystem->getDayNightCycle();
+            const char* todStr = "?";
+            switch (dnc.getTimeOfDay()) {
+                case TimeOfDay::Dawn:  todStr = "Dawn";  break;
+                case TimeOfDay::Day:   todStr = "Day";   break;
+                case TimeOfDay::Dusk:  todStr = "Dusk";  break;
+                case TimeOfDay::Night: todStr = "Night"; break;
+            }
+            char lightText[192];
+            snprintf(lightText, sizeof(lightText),
+                     "Light: %zu sources | %zu tiles | %.1fms | %s (%.0f%% bright) | Day %d",
+                     lStats.pointLightCount, lStats.tilesLit, lStats.lastRecalcTimeMs,
+                     todStr, lStats.skyBrightness * 100.0f, dnc.getDayCount());
+            m_renderer->drawText(lightText, {20, 170}, 16, Color(255, 220, 100, 255));
+        }
+
+        // Audio info
+        if (m_audioSystem) {
+            auto aStats = m_audioSystem->getStats();
+            std::string audioText = "Audio: ";
+            audioText += aStats.deviceInitialized ? "ready" : "no device";
+            audioText += " | " + std::to_string(aStats.registeredSounds) + " sounds registered";
+            audioText += " | " + std::to_string(aStats.activeSounds) + " playing";
+            audioText += " | Music: ";
+            audioText += aStats.musicPlaying ? aStats.currentMusic : "none";
+            m_renderer->drawText(audioText.c_str(), {20, 200}, 16, Color(150, 255, 150, 255));
+        }
+
+        // UI info
+        {
+            auto uiStats = m_uiSystem.getStats();
+            char uiText[128];
+            snprintf(uiText, sizeof(uiText), "UI: %zu screens (%zu visible) | %zu elements",
+                     uiStats.screenCount, uiStats.visibleScreenCount, uiStats.totalElements);
+            m_renderer->drawText(uiText, {20, 230}, 16, Color(220, 180, 255, 255));
+        }
+
+        // Enemy info (Stage 14)
+        if (m_enemySpawnSystem) {
+            const auto& eStats = m_enemySpawnSystem->getStats();
+            char enemyText[192];
+            snprintf(enemyText, sizeof(enemyText),
+                     "Enemies: %d active | %d spawned | %d killed | Spawning: %s",
+                     eStats.activeEnemies, eStats.totalSpawned, eStats.totalKilled,
+                     m_enemySpawnSystem->getConfig().enabled ? "on" : "off");
+            m_renderer->drawText(enemyText, {20, 260}, 16, Color(255, 150, 150, 255));
+        }
+
+        // NPC info (Stage 15)
+        {
+            int npcCount = 0;
+            m_registry.each<NPCTag>([&npcCount](Entity, const NPCTag&) { ++npcCount; });
+            char npcText[128];
+            snprintf(npcText, sizeof(npcText), "NPCs: %d active | Rooms: %zu validated",
+                     npcCount, m_housingSystem ? m_housingSystem->getValidRoomCount() : 0u);
+            m_renderer->drawText(npcText, {20, 290}, 16, Color(150, 200, 255, 255));
+        }
+
+        // Scene, Timer & Save info (Stage 16)
+        {
+            char stageText[192];
+            const char* sceneName = m_sceneManager.currentScene().empty() ? "none" : m_sceneManager.currentScene().c_str();
+            snprintf(stageText, sizeof(stageText),
+                     "Scene: %s | Timers: %zu active | Save: %zu mods%s",
+                     sceneName,
+                     m_timerSystem.activeCount(),
+                     m_saveSystem.modCount(),
+                     m_saveSystem.isDirty() ? " (dirty)" : "");
+            m_renderer->drawText(stageText, {20, 320}, 16, Color(200, 255, 200, 255));
+        }
+
+        // Particle, Tween & Debug info (Stage 17)
+        {
+            char polishText[256];
+            auto pStats = m_particleSystem ? m_particleSystem->getStats()
+                                           : ParticleSystem::Stats{};
+            snprintf(polishText, sizeof(polishText),
+                     "Particles: %zu emitters, %zu alive | Tweens: %zu active | Debug: %s",
+                     pStats.activeEmitters, pStats.activeParticles,
+                     m_tweenSystem.activeCount(),
+                     m_debugDrawSystem.isEnabled() ? "on" : "off");
+            m_renderer->drawText(polishText, {20, 350}, 16, Color(255, 200, 150, 255));
+        }
+
+        // Profiler & Resources (Stage 18)
+        {
+            auto rStats = m_resourceManager.getStats();
+            char profText[256];
+            snprintf(profText, sizeof(profText),
+                     "Profiler: %s | Budget: %.0f%% | Resources: %zu tracked",
+                     m_profiler.isEnabled() ? "on" : "off",
+                     m_profiler.frameBudgetUsage() * 100.0,
+                     rStats.totalCount);
+            m_renderer->drawText(profText, {20, 380}, 16, Color(200, 220, 255, 255));
+        }
     }
 
-    // Audio info
-    if (m_audioSystem) {
-        auto aStats = m_audioSystem->getStats();
-        std::string audioText = "Audio: ";
-        audioText += aStats.deviceInitialized ? "ready" : "no device";
-        audioText += " | " + std::to_string(aStats.registeredSounds) + " sounds registered";
-        audioText += " | " + std::to_string(aStats.activeSounds) + " playing";
-        audioText += " | Music: ";
-        audioText += aStats.musicPlaying ? aStats.currentMusic : "none";
-        m_renderer->drawText(audioText.c_str(), {20, 200}, 16, Color(150, 255, 150, 255));
-    }
-
-    // UI info
-    {
-        auto uiStats = m_uiSystem.getStats();
-        char uiText[128];
-        snprintf(uiText, sizeof(uiText), "UI: %zu screens (%zu visible) | %zu elements",
-                 uiStats.screenCount, uiStats.visibleScreenCount, uiStats.totalElements);
-        m_renderer->drawText(uiText, {20, 230}, 16, Color(220, 180, 255, 255));
-    }
-
-    // Enemy info (Stage 14)
-    if (m_enemySpawnSystem) {
-        const auto& eStats = m_enemySpawnSystem->getStats();
-        char enemyText[192];
-        snprintf(enemyText, sizeof(enemyText),
-                 "Enemies: %d active | %d spawned | %d killed | Spawning: %s",
-                 eStats.activeEnemies, eStats.totalSpawned, eStats.totalKilled,
-                 m_enemySpawnSystem->getConfig().enabled ? "on" : "off");
-        m_renderer->drawText(enemyText, {20, 260}, 16, Color(255, 150, 150, 255));
-    }
-
-    // NPC info (Stage 15)
-    {
-        int npcCount = 0;
-        m_registry.each<NPCTag>([&npcCount](Entity, const NPCTag&) { ++npcCount; });
-        char npcText[128];
-        snprintf(npcText, sizeof(npcText), "NPCs: %d active | Rooms: %zu validated",
-                 npcCount, m_housingSystem ? m_housingSystem->getValidRoomCount() : 0u);
-        m_renderer->drawText(npcText, {20, 290}, 16, Color(150, 200, 255, 255));
-    }
-
-    // Scene, Timer & Save info (Stage 16)
-    {
-        char stageText[192];
-        const char* sceneName = m_sceneManager.currentScene().empty() ? "none" : m_sceneManager.currentScene().c_str();
-        snprintf(stageText, sizeof(stageText),
-                 "Scene: %s | Timers: %zu active | Save: %zu mods%s",
-                 sceneName,
-                 m_timerSystem.activeCount(),
-                 m_saveSystem.modCount(),
-                 m_saveSystem.isDirty() ? " (dirty)" : "");
-        m_renderer->drawText(stageText, {20, 320}, 16, Color(200, 255, 200, 255));
-    }
-
-    // Particle, Tween & Debug info (Stage 17)
-    {
-        char polishText[256];
-        auto pStats = m_particleSystem ? m_particleSystem->getStats()
-                                       : ParticleSystem::Stats{};
-        snprintf(polishText, sizeof(polishText),
-                 "Particles: %zu emitters, %zu alive | Tweens: %zu active | Debug: %s",
-                 pStats.activeEmitters, pStats.activeParticles,
-                 m_tweenSystem.activeCount(),
-                 m_debugDrawSystem.isEnabled() ? "on" : "off");
-        m_renderer->drawText(polishText, {20, 350}, 16, Color(255, 200, 150, 255));
-    }
-
-    m_renderer->drawText("WASD/Arrows: Move camera | Q/E: Zoom | L: Toggle light | F3: Debug draw | F11: Fullscreen",
-                         {20, 380}, 16, Color::Gray());
+    m_renderer->drawText("WASD/Arrows: Move | Q/E: Zoom | F2: Diagnostics | F3: Debug | F4: Profiler | L: Light | F11: FS",
+                         {20, 410}, 16, Color::Gray());
 
     m_renderer->endFrame();
     // Camera shake offset is automatically undone by ShakeGuard destructor
