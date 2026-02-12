@@ -1,14 +1,15 @@
 #include "engine/Profiler.hpp"
+#include "engine/Log.hpp"
 
 #include <algorithm>
 
 namespace gloaming {
 
 // =============================================================================
-// ScopedZone
+// ScopedZone — stores const char* to avoid per-frame allocation
 // =============================================================================
 
-Profiler::ScopedZone::ScopedZone(Profiler& profiler, const std::string& name)
+Profiler::ScopedZone::ScopedZone(Profiler& profiler, const char* name)
     : m_profiler(profiler), m_name(name) {
     m_profiler.beginZone(m_name);
 }
@@ -23,6 +24,7 @@ Profiler::ScopedZone::~ScopedZone() {
 
 Profiler::Profiler() {
     m_history.resize(kHistorySize, 0.0f);
+    m_activeZones.reserve(8); // Typical engine has < 10 zones
 }
 
 void Profiler::beginFrame() {
@@ -56,35 +58,62 @@ void Profiler::endFrame() {
 
 void Profiler::beginZone(const std::string& name) {
     if (!m_enabled) return;
-    m_activeZones[name] = ActiveZone{Clock::now()};
+
+    // Warn on overlapping zone with the same name (Issue #4)
+    for (const auto& active : m_activeZones) {
+        if (active.name == name) {
+            LOG_WARN("Profiler: overlapping beginZone('{}') — previous measurement will be lost", name);
+            break;
+        }
+    }
+
+    // Check if zone already active (overlap) — update start time
+    for (auto& active : m_activeZones) {
+        if (active.name == name) {
+            active.start = Clock::now();
+            return;
+        }
+    }
+
+    m_activeZones.push_back(ActiveZone{name, Clock::now()});
 }
 
 void Profiler::endZone(const std::string& name) {
     if (!m_enabled) return;
 
-    auto it = m_activeZones.find(name);
-    if (it == m_activeZones.end()) return;
+    // Linear search through small vector (typically < 10 entries)
+    for (auto it = m_activeZones.begin(); it != m_activeZones.end(); ++it) {
+        if (it->name == name) {
+            auto now = Clock::now();
+            double elapsed = std::chrono::duration<double, std::milli>(now - it->start).count();
 
-    auto now = Clock::now();
-    double elapsed = std::chrono::duration<double, std::milli>(now - it->second.start).count();
-    m_activeZones.erase(it);
+            // Swap-and-pop for O(1) removal
+            if (it != m_activeZones.end() - 1) {
+                *it = std::move(m_activeZones.back());
+            }
+            m_activeZones.pop_back();
 
-    auto& stats = getOrCreateZone(name);
-    stats.lastTimeMs = elapsed;
-    stats.sampleCount++;
+            auto& stats = getOrCreateZone(name);
+            stats.lastTimeMs = elapsed;
+            stats.sampleCount++;
 
-    if (stats.sampleCount == 1) {
-        stats.avgTimeMs = elapsed;
-    } else {
-        stats.avgTimeMs = stats.avgTimeMs * (1.0 - ProfileZoneStats::kSmoothing)
-                        + elapsed * ProfileZoneStats::kSmoothing;
+            if (stats.sampleCount == 1) {
+                stats.avgTimeMs = elapsed;
+            } else {
+                stats.avgTimeMs = stats.avgTimeMs * (1.0 - ProfileZoneStats::kSmoothing)
+                                + elapsed * ProfileZoneStats::kSmoothing;
+            }
+
+            stats.minTimeMs = std::min(stats.minTimeMs, elapsed);
+            stats.maxTimeMs = std::max(stats.maxTimeMs, elapsed);
+            return;
+        }
     }
 
-    stats.minTimeMs = std::min(stats.minTimeMs, elapsed);
-    stats.maxTimeMs = std::max(stats.maxTimeMs, elapsed);
+    // Zone was never started — ignore silently
 }
 
-Profiler::ScopedZone Profiler::scopedZone(const std::string& name) {
+Profiler::ScopedZone Profiler::scopedZone(const char* name) {
     return ScopedZone(*this, name);
 }
 

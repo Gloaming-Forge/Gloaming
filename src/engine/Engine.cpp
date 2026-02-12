@@ -32,7 +32,7 @@ bool Engine::init(const std::string& configPath) {
         LOG_INFO("Configuration loaded from '{}'", configPath);
     }
 
-    LOG_INFO("Gloaming Engine v0.5.0 starting...");
+    LOG_INFO("Gloaming Engine v{} starting...", kEngineVersion);
 
     // Create window
     WindowConfig winCfg;
@@ -537,7 +537,9 @@ void Engine::render() {
         m_diagnosticOverlay.render(m_renderer.get(), m_profiler, m_resourceManager, *this);
     } else {
         // Default HUD (when diagnostics overlay is off)
-        m_renderer->drawText("Gloaming Engine v0.5.0 - Stage 18: Polish & Release", {20, 20}, 20, Color::White());
+        char bannerBuf[128];
+        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 18: Polish & Release", kEngineVersion);
+        m_renderer->drawText(bannerBuf, {20, 20}, 20, Color::White());
 
         char fpsText[64];
         snprintf(fpsText, sizeof(fpsText), "FPS: %d  (%.2f ms)", GetFPS(), m_profiler.frameTimeMs());

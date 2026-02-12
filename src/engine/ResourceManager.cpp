@@ -1,6 +1,7 @@
 #include "engine/ResourceManager.hpp"
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace gloaming {
 
@@ -91,10 +92,8 @@ std::vector<std::string> ResourceManager::findLeaks(
     const std::vector<std::string>& aliveResources) const {
 
     // Build a set of alive paths for fast lookup
-    std::unordered_map<std::string, bool> alive;
-    for (const auto& path : aliveResources) {
-        alive[path] = true;
-    }
+    std::unordered_set<std::string> alive(aliveResources.begin(),
+                                           aliveResources.end());
 
     std::vector<std::string> leaks;
     for (const auto& [path, entry] : m_entries) {

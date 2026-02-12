@@ -49,6 +49,9 @@
 
 namespace gloaming {
 
+/// Engine version string — single source of truth for all version displays.
+inline constexpr const char* kEngineVersion = "0.5.0";
+
 class Engine {
 public:
     bool init(const std::string& configPath = "config.json");
@@ -126,8 +129,11 @@ public:
 
     // Profiler, Resource Manager & Diagnostics accessors (Stage 18)
     Profiler& getProfiler() { return m_profiler; }
+    const Profiler& getProfiler() const { return m_profiler; }
     ResourceManager& getResourceManager() { return m_resourceManager; }
+    const ResourceManager& getResourceManager() const { return m_resourceManager; }
     DiagnosticOverlay& getDiagnosticOverlay() { return m_diagnosticOverlay; }
+    const DiagnosticOverlay& getDiagnosticOverlay() const { return m_diagnosticOverlay; }
 
 private:
     void processInput();

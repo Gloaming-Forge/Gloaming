@@ -89,7 +89,7 @@ void bindPolishAPI(sol::state& lua, Engine& engine,
     // resources.track(path, type, size_bytes)
     resourcesApi["track"] = [&resourceManager](const std::string& path,
                                                 const std::string& type,
-                                                sol::optional<int> sizeBytes) {
+                                                sol::optional<int64_t> sizeBytes) {
         resourceManager.track(path, type,
                               sizeBytes ? static_cast<size_t>(*sizeBytes) : 0);
     };
@@ -162,7 +162,7 @@ void bindPolishAPI(sol::state& lua, Engine& engine,
 
     // engine.version() -> string
     engineApi["version"] = []() -> std::string {
-        return "0.5.0";
+        return kEngineVersion;
     };
 
     // engine.frame_count() -> number

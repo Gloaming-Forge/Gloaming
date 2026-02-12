@@ -89,7 +89,9 @@ void DiagnosticOverlay::renderFull(IRenderer* renderer, const Profiler& profiler
         Color(0, 0, 0, 200));
 
     // ---- Header ----
-    y = drawLine(renderer, x, y, "Gloaming Engine v0.5.0 - Diagnostics",
+    char headerBuf[128];
+    snprintf(headerBuf, sizeof(headerBuf), "Gloaming Engine v%s - Diagnostics", kEngineVersion);
+    y = drawLine(renderer, x, y, headerBuf,
                  Color(255, 200, 100, 255));
 
     // ---- Frame timing ----

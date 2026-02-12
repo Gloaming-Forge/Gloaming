@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <chrono>
@@ -29,12 +30,17 @@ struct ProfileZoneStats {
 ///   { auto z = profiler.scopedZone("Physics"); ... }
 ///   { auto z = profiler.scopedZone("Render");  ... }
 ///   profiler.endFrame();
+///
+/// Zone names are expected to be string literals or long-lived strings.
+/// The profiler stores `const char*` for zone lookup in the hot path and
+/// only allocates `std::string` once per unique zone (on first encounter).
 class Profiler {
 public:
     /// RAII zone guard. Calls endZone() on destruction.
+    /// Stores a `const char*` to avoid per-frame string allocation.
     class ScopedZone {
     public:
-        ScopedZone(Profiler& profiler, const std::string& name);
+        ScopedZone(Profiler& profiler, const char* name);
         ~ScopedZone();
 
         ScopedZone(const ScopedZone&) = delete;
@@ -42,7 +48,7 @@ public:
 
     private:
         Profiler& m_profiler;
-        std::string m_name;
+        const char* m_name;
     };
 
     Profiler();
@@ -59,8 +65,9 @@ public:
     /// Stop timing a named zone and accumulate stats.
     void endZone(const std::string& name);
 
-    /// Create a RAII scoped zone.
-    ScopedZone scopedZone(const std::string& name);
+    /// Create a RAII scoped zone (zero-copy: stores the pointer directly).
+    /// The name must outlive the ScopedZone (string literals are fine).
+    ScopedZone scopedZone(const char* name);
 
     // ---- Query API ----
 
@@ -129,11 +136,13 @@ private:
     // Frame budget
     double m_frameBudgetMs = 16.6667; // 60 FPS
 
-    // Per-zone timing
+    // Per-zone active timers — small flat vector for cache-friendly iteration.
+    // Typical engines have < 10 profiler zones per frame so linear search wins.
     struct ActiveZone {
+        std::string name;
         TimePoint start;
     };
-    std::unordered_map<std::string, ActiveZone> m_activeZones;
+    std::vector<ActiveZone> m_activeZones;
 
     // Zone statistics — vector for ordered iteration, map for O(1) lookup
     std::vector<ProfileZoneStats> m_zoneStatsVec;
