@@ -169,6 +169,9 @@ add_library(gloaming_engine STATIC
     src/engine/InputGlyphs.cpp
     src/engine/Haptics.cpp
     src/ui/OnScreenKeyboard.cpp
+    # Display System — Steam Deck Support (Stage 19B)
+    src/rendering/ViewportScaler.cpp
+    src/ui/UIScaling.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

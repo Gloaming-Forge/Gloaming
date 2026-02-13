@@ -48,6 +48,8 @@
 #include "engine/InputGlyphs.hpp"
 #include "engine/Haptics.hpp"
 #include "ui/OnScreenKeyboard.hpp"
+#include "rendering/ViewportScaler.hpp"
+#include "ui/UIScaling.hpp"
 
 #include <string>
 #include <memory>
@@ -151,6 +153,12 @@ public:
     const Haptics& getHaptics() const { return m_haptics; }
     OnScreenKeyboard& getOnScreenKeyboard() { return m_onScreenKeyboard; }
 
+    // Display System (Stage 19B)
+    ViewportScaler& getViewportScaler() { return m_viewportScaler; }
+    const ViewportScaler& getViewportScaler() const { return m_viewportScaler; }
+    UIScaling& getUIScaling() { return m_uiScaling; }
+    const UIScaling& getUIScaling() const { return m_uiScaling; }
+
 private:
     void processInput();
     void update(double dt);
@@ -234,6 +242,11 @@ private:
     InputGlyphProvider m_inputGlyphProvider;
     Haptics m_haptics;
     OnScreenKeyboard m_onScreenKeyboard;
+
+    // Display System (Stage 19B)
+    ViewportScaler m_viewportScaler;
+    UIScaling m_uiScaling;
+    bool m_wasSuspended = false;
 
     bool m_running = false;
 };

@@ -21,15 +21,30 @@ public:
     /// Approximate frames per second (smoothed).
     double fps() const { return m_fps; }
 
+    /// Set a target frame rate (0 = uncapped / vsync only).
+    /// Uses Raylib's SetTargetFPS under the hood.
+    void setTargetFPS(int fps);
+
+    /// Get the current target FPS (0 = uncapped).
+    int getTargetFPS() const { return m_targetFPS; }
+
+    /// Force the next frame's delta to be clamped to this value.
+    /// Useful after suspend/resume to prevent physics explosions.
+    void clampNextDelta(double maxDelta);
+
 private:
     double   m_deltaTime   = 0.0;
     double   m_elapsedTime = 0.0;
     uint64_t m_frameCount  = 0;
     double   m_fps         = 0.0;
+    int      m_targetFPS   = 0;
 
     // Simple exponential moving average for FPS
     double m_fpsAccumulator = 0.0;
     int    m_fpsSamples     = 0;
+
+    // One-shot clamp for the next frame
+    double m_nextDeltaClamp = 0.0;
 
     static constexpr double MAX_DELTA = 0.25; // Clamp to avoid spiral of death
 };

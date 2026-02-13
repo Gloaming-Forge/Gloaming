@@ -15,8 +15,21 @@
 #include "world/WorldGenLuaBindings.hpp"
 
 #include <raylib.h>
+#include <cstdlib>
 
 namespace gloaming {
+
+namespace {
+    bool isSteamDeck() {
+        const char* val = std::getenv("SteamDeck");
+        return val != nullptr && std::string(val) == "1";
+    }
+
+    bool isSteamOS() {
+        const char* val = std::getenv("SteamOS");
+        return val != nullptr;
+    }
+} // anonymous namespace
 
 bool Engine::init(const std::string& configPath) {
     // Load configuration
@@ -34,13 +47,25 @@ bool Engine::init(const std::string& configPath) {
 
     LOG_INFO("Gloaming Engine v{} starting...", kEngineVersion);
 
+    // Platform-aware defaults for Steam Deck
+    bool onDeck = isSteamDeck();
+    int defaultWidth  = onDeck ? 1280 : 1280;
+    int defaultHeight = onDeck ? 800  : 720;
+    bool defaultFS    = onDeck ? true : false;
+
     // Create window
     WindowConfig winCfg;
-    winCfg.width      = m_config.getInt("window.width", 1280);
-    winCfg.height     = m_config.getInt("window.height", 720);
+    winCfg.width      = m_config.getInt("window.width", defaultWidth);
+    winCfg.height     = m_config.getInt("window.height", defaultHeight);
     winCfg.title      = m_config.getString("window.title", "Gloaming");
-    winCfg.fullscreen = m_config.getBool("window.fullscreen", false);
+    winCfg.fullscreen = m_config.getBool("window.fullscreen", defaultFS);
     winCfg.vsync      = m_config.getBool("window.vsync", true);
+
+    // Parse fullscreen mode from config
+    std::string fsMode = m_config.getString("window.fullscreen_mode", "borderless");
+    if (fsMode == "exclusive")       winCfg.fullscreenMode = FullscreenMode::Fullscreen;
+    else if (fsMode == "windowed")   winCfg.fullscreenMode = FullscreenMode::Windowed;
+    else                             winCfg.fullscreenMode = FullscreenMode::BorderlessFullscreen;
 
     if (!m_window.init(winCfg)) {
         LOG_CRITICAL("Failed to create window");
@@ -356,8 +381,53 @@ bool Engine::init(const std::string& configPath) {
                  deadzone, rumbleEnabled, glyphStyle);
     }
 
+    // Initialize display systems (Stage 19B)
+    {
+        // ViewportScaler configuration
+        ViewportConfig vpCfg;
+        vpCfg.designWidth  = m_config.getInt("display.design_width", 1280);
+        vpCfg.designHeight = m_config.getInt("display.design_height", 720);
+
+        std::string scaleMode = m_config.getString("display.scale_mode", "expand");
+        if (scaleMode == "fill_crop")        vpCfg.scaleMode = ScaleMode::FillCrop;
+        else if (scaleMode == "fit_letterbox") vpCfg.scaleMode = ScaleMode::FitLetterbox;
+        else if (scaleMode == "stretch")     vpCfg.scaleMode = ScaleMode::Stretch;
+        else                                  vpCfg.scaleMode = ScaleMode::Expand;
+
+        m_viewportScaler.configure(vpCfg);
+        m_viewportScaler.update(m_window.getWidth(), m_window.getHeight());
+
+        // Update camera to use the effective resolution from ViewportScaler
+        m_camera.setScreenSize(
+            static_cast<float>(m_viewportScaler.getEffectiveWidth()),
+            static_cast<float>(m_viewportScaler.getEffectiveHeight()));
+
+        // UIScaling configuration
+        UIScalingConfig uiCfg;
+        uiCfg.baseScale   = m_config.getFloat("display.ui_scale", 1.0f);
+        uiCfg.minFontSize = m_config.getInt("display.min_font_size", 12);
+        m_uiScaling.configure(uiCfg);
+        m_uiScaling.autoDetect(m_window.getWidth(), m_window.getHeight());
+
+        // Target FPS (for battery management on Deck)
+        int targetFPS = m_config.getInt("performance.target_fps", onDeck ? 60 : 0);
+        if (targetFPS > 0) {
+            m_time.setTargetFPS(targetFPS);
+        }
+
+        LOG_INFO("Display system initialized (design={}x{}, scale_mode={}, effective={}x{}, "
+                 "ui_scale={:.2f}, min_font={}px, target_fps={})",
+                 vpCfg.designWidth, vpCfg.designHeight, scaleMode,
+                 m_viewportScaler.getEffectiveWidth(), m_viewportScaler.getEffectiveHeight(),
+                 m_uiScaling.getScale(), uiCfg.minFontSize, targetFPS);
+
+        if (onDeck) {
+            LOG_INFO("Steam Deck detected — using 1280x800 defaults, borderless fullscreen, 60 FPS cap");
+        }
+    }
+
     m_running = true;
-    LOG_INFO("Engine initialized successfully — Stage 19A: Input System");
+    LOG_INFO("Engine initialized successfully — Stage 19B: Display System");
     return true;
 }
 
@@ -393,6 +463,26 @@ void Engine::processInput() {
     m_input.update();
     m_gamepad.update();
     m_inputDeviceTracker.update(m_input, m_gamepad);
+
+    // Update viewport scaler on window resize
+    m_viewportScaler.update(m_window.getWidth(), m_window.getHeight());
+    m_camera.setScreenSize(
+        static_cast<float>(m_viewportScaler.getEffectiveWidth()),
+        static_cast<float>(m_viewportScaler.getEffectiveHeight()));
+
+    // Suspend/resume detection (Stage 19B — for Steam Deck sleep/wake)
+    if (!m_window.isFocused()) {
+        if (!m_wasSuspended && m_audioSystem) {
+            m_audioSystem->setMusicPaused(true);
+        }
+        m_wasSuspended = true;
+    } else if (m_wasSuspended) {
+        if (m_audioSystem) {
+            m_audioSystem->setMusicPaused(false);
+        }
+        m_time.clampNextDelta(0.1);  // Prevent physics explosion after long suspend
+        m_wasSuspended = false;
+    }
 
     if (m_input.isKeyPressed(KEY_F11)) {
         m_window.toggleFullscreen();
@@ -565,6 +655,9 @@ void Engine::render() {
     // Render scene transition overlay (on top of everything)
     m_sceneManager.renderTransition(m_renderer.get());
 
+    // Render letterbox/pillarbox bars if using FitLetterbox mode
+    m_viewportScaler.renderBars(m_renderer.get());
+
     // Render on-screen keyboard (above everything else)
     m_onScreenKeyboard.render(m_renderer.get());
 
@@ -574,7 +667,7 @@ void Engine::render() {
     } else {
         // Default HUD (when diagnostics overlay is off)
         char bannerBuf[128];
-        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19A: Input System", kEngineVersion);
+        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19B: Display System", kEngineVersion);
         m_renderer->drawText(bannerBuf, {20, 20}, 20, Color::White());
 
         char fpsText[64];
@@ -717,10 +810,31 @@ void Engine::render() {
                      deviceStr, gpCount);
             m_renderer->drawText(inputText, {20, 410}, 16, Color(180, 220, 255, 255));
         }
+
+        // Display info (Stage 19B)
+        {
+            const char* modeStr = "Expand";
+            switch (m_viewportScaler.getConfig().scaleMode) {
+                case ScaleMode::FillCrop:    modeStr = "FillCrop";    break;
+                case ScaleMode::FitLetterbox: modeStr = "FitLetterbox"; break;
+                case ScaleMode::Stretch:     modeStr = "Stretch";     break;
+                case ScaleMode::Expand:      modeStr = "Expand";      break;
+            }
+            char displayText[192];
+            snprintf(displayText, sizeof(displayText),
+                     "Display: %dx%d eff | %s | Scale: %.2f | UI: %.2fx | %dHz | FPS cap: %d",
+                     m_viewportScaler.getEffectiveWidth(),
+                     m_viewportScaler.getEffectiveHeight(),
+                     modeStr, m_viewportScaler.getScale(),
+                     m_uiScaling.getScale(),
+                     m_window.getRefreshRate(),
+                     m_time.getTargetFPS());
+            m_renderer->drawText(displayText, {20, 440}, 16, Color(150, 220, 200, 255));
+        }
     }
 
     m_renderer->drawText("WASD/Arrows: Move | Q/E: Zoom | F2: Diagnostics | F3: Debug | F4: Profiler | L: Light | F11: FS",
-                         {20, 440}, 16, Color::Gray());
+                         {20, 470}, 16, Color::Gray());
 
     m_renderer->endFrame();
     // Camera shake offset is automatically undone by ShakeGuard destructor

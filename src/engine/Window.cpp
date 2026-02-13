@@ -9,6 +9,12 @@ bool Window::init(const WindowConfig& config) {
     if (config.vsync) {
         flags |= FLAG_VSYNC_HINT;
     }
+
+    // For borderless fullscreen, set the undecorated + fullscreen flags
+    if (config.fullscreen && config.fullscreenMode == FullscreenMode::BorderlessFullscreen) {
+        flags |= FLAG_BORDERLESS_WINDOWED_MODE;
+    }
+
     SetConfigFlags(flags);
 
     InitWindow(config.width, config.height, config.title.c_str());
@@ -18,7 +24,17 @@ bool Window::init(const WindowConfig& config) {
     }
 
     if (config.fullscreen) {
-        ToggleFullscreen();
+        if (config.fullscreenMode == FullscreenMode::Fullscreen) {
+            // Exclusive fullscreen
+            ToggleFullscreen();
+            m_fullscreenMode = FullscreenMode::Fullscreen;
+        } else if (config.fullscreenMode == FullscreenMode::BorderlessFullscreen) {
+            // Borderless fullscreen is handled by the config flags above
+            ToggleBorderlessWindowed();
+            m_fullscreenMode = FullscreenMode::BorderlessFullscreen;
+        }
+    } else {
+        m_fullscreenMode = FullscreenMode::Windowed;
     }
 
     m_initialized = true;
@@ -58,7 +74,51 @@ void Window::setTitle(const std::string& title) {
 }
 
 void Window::toggleFullscreen() {
-    ToggleFullscreen();
+    if (m_fullscreenMode == FullscreenMode::Windowed) {
+        // Enter borderless fullscreen by default when toggling
+        ToggleBorderlessWindowed();
+        m_fullscreenMode = FullscreenMode::BorderlessFullscreen;
+    } else {
+        // Return to windowed mode
+        if (m_fullscreenMode == FullscreenMode::Fullscreen) {
+            ToggleFullscreen();
+        } else {
+            ToggleBorderlessWindowed();
+        }
+        m_fullscreenMode = FullscreenMode::Windowed;
+    }
+}
+
+void Window::setFullscreenMode(FullscreenMode mode) {
+    if (mode == m_fullscreenMode) return;
+
+    // First, exit current mode
+    if (m_fullscreenMode == FullscreenMode::Fullscreen) {
+        ToggleFullscreen();
+    } else if (m_fullscreenMode == FullscreenMode::BorderlessFullscreen) {
+        ToggleBorderlessWindowed();
+    }
+
+    // Then, enter new mode
+    if (mode == FullscreenMode::Fullscreen) {
+        ToggleFullscreen();
+    } else if (mode == FullscreenMode::BorderlessFullscreen) {
+        ToggleBorderlessWindowed();
+    }
+
+    m_fullscreenMode = mode;
+}
+
+int Window::getRefreshRate() const {
+    return GetMonitorRefreshRate(GetCurrentMonitor());
+}
+
+bool Window::isFullscreen() const {
+    return m_fullscreenMode != FullscreenMode::Windowed;
+}
+
+bool Window::isFocused() const {
+    return IsWindowFocused();
 }
 
 } // namespace gloaming
