@@ -392,7 +392,6 @@ void Engine::run() {
 void Engine::processInput() {
     m_input.update();
     m_gamepad.update();
-    m_inputActions.latchAxisState(m_gamepad);
     m_inputDeviceTracker.update(m_input, m_gamepad);
 
     if (m_input.isKeyPressed(KEY_F11)) {
@@ -495,6 +494,10 @@ void Engine::update(double dt) {
     if (m_tileMap.isWorldLoaded()) {
         m_tileMap.update(m_camera);
     }
+
+    // Latch axis state at end of frame so m_prevAxisValues holds this frame's
+    // values when next frame's checkBinding compares current vs previous.
+    m_inputActions.latchAxisState(m_gamepad);
 }
 
 void Engine::render() {

@@ -494,6 +494,101 @@ TEST(OnScreenKeyboardTest, DismissHidesAndCallsCallback) {
 }
 
 // ============================================================================
+// Axis Edge Detection Tests (latchAxisState)
+// ============================================================================
+
+TEST(AxisEdgeDetectionTest, LatchAxisStateDoesNotCrash) {
+    InputActionMap actions;
+    Gamepad gamepad;
+    actions.registerPlatformerDefaults();
+    // Should not crash even without a connected gamepad
+    actions.latchAxisState(gamepad);
+}
+
+TEST(AxisEdgeDetectionTest, AxisPressedReturnsFalseWhenBelowThreshold) {
+    InputActionMap actions;
+    Input input;
+    Gamepad gamepad;
+    actions.registerAction("move_right", Key::D);
+    actions.addGamepadBinding("move_right", GamepadAxis::LeftX, 0.5f);
+
+    // Latch baseline state (axis = 0.0, below threshold)
+    actions.latchAxisState(gamepad);
+
+    // Current axis = 0.0, prev = 0.0 -> active=false, wasActive=false -> Pressed=false
+    EXPECT_FALSE(actions.isActionPressed("move_right", input, gamepad));
+}
+
+TEST(AxisEdgeDetectionTest, AxisReleasedReturnsFalseWhenBelowThreshold) {
+    InputActionMap actions;
+    Input input;
+    Gamepad gamepad;
+    actions.registerAction("move_right", Key::D);
+    actions.addGamepadBinding("move_right", GamepadAxis::LeftX, 0.5f);
+
+    // Latch baseline
+    actions.latchAxisState(gamepad);
+
+    // Current axis = 0.0, prev = 0.0 -> !active && wasActive = false -> Released=false
+    EXPECT_FALSE(actions.isActionReleased("move_right", input, gamepad));
+}
+
+TEST(AxisEdgeDetectionTest, AxisDownReturnsFalseWhenBelowThreshold) {
+    InputActionMap actions;
+    Input input;
+    Gamepad gamepad;
+    actions.registerAction("move_right", Key::D);
+    actions.addGamepadBinding("move_right", GamepadAxis::LeftX, 0.5f);
+
+    actions.latchAxisState(gamepad);
+
+    // Current axis = 0.0, below threshold -> Down = false
+    EXPECT_FALSE(actions.isActionDown("move_right", input, gamepad));
+}
+
+TEST(AxisEdgeDetectionTest, MultipleLatchCallsStable) {
+    InputActionMap actions;
+    Input input;
+    Gamepad gamepad;
+    actions.registerPlatformerDefaults();
+
+    // Multiple latch calls with no change should be stable
+    for (int i = 0; i < 10; ++i) {
+        actions.latchAxisState(gamepad);
+    }
+    EXPECT_FALSE(actions.isActionPressed("move_left", input, gamepad));
+    EXPECT_FALSE(actions.isActionDown("move_left", input, gamepad));
+    EXPECT_FALSE(actions.isActionReleased("move_left", input, gamepad));
+}
+
+TEST(AxisEdgeDetectionTest, NegativeAxisBinding) {
+    InputActionMap actions;
+    Input input;
+    Gamepad gamepad;
+    actions.registerAction("move_left", Key::A);
+    actions.addGamepadBinding("move_left", GamepadAxis::LeftX, -0.5f);
+
+    actions.latchAxisState(gamepad);
+
+    // Negative axis binding with axis = 0.0 -> below negative threshold
+    EXPECT_FALSE(actions.isActionPressed("move_left", input, gamepad));
+    EXPECT_FALSE(actions.isActionDown("move_left", input, gamepad));
+    EXPECT_FALSE(actions.isActionReleased("move_left", input, gamepad));
+}
+
+TEST(AxisEdgeDetectionTest, GetActionValueWithDeadzone) {
+    InputActionMap actions;
+    Input input;
+    Gamepad gamepad;
+    actions.registerAction("move_right", Key::D);
+    actions.addGamepadBinding("move_right", GamepadAxis::LeftX, 0.5f);
+
+    // With no gamepad connected, axis value should be 0 (deadzone applied)
+    float val = actions.getActionValue("move_right", input, gamepad);
+    EXPECT_FLOAT_EQ(val, 0.0f);
+}
+
+// ============================================================================
 // GamepadButton and GamepadAxis Enum Tests
 // ============================================================================
 
