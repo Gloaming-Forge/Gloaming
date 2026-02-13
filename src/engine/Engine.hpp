@@ -4,6 +4,9 @@
 #include "engine/Window.hpp"
 #include "engine/Input.hpp"
 #include "engine/Time.hpp"
+#include "engine/Profiler.hpp"
+#include "engine/ResourceManager.hpp"
+#include "engine/DiagnosticOverlay.hpp"
 #include "rendering/IRenderer.hpp"
 #include "rendering/Camera.hpp"
 #include "rendering/Texture.hpp"
@@ -45,6 +48,9 @@
 #include <memory>
 
 namespace gloaming {
+
+/// Engine version string — single source of truth for all version displays.
+inline constexpr const char* kEngineVersion = "0.5.0";
 
 class Engine {
 public:
@@ -121,6 +127,14 @@ public:
     TweenSystem& getTweenSystem() { return m_tweenSystem; }
     DebugDrawSystem& getDebugDrawSystem() { return m_debugDrawSystem; }
 
+    // Profiler, Resource Manager & Diagnostics accessors (Stage 18)
+    Profiler& getProfiler() { return m_profiler; }
+    const Profiler& getProfiler() const { return m_profiler; }
+    ResourceManager& getResourceManager() { return m_resourceManager; }
+    const ResourceManager& getResourceManager() const { return m_resourceManager; }
+    DiagnosticOverlay& getDiagnosticOverlay() { return m_diagnosticOverlay; }
+    const DiagnosticOverlay& getDiagnosticOverlay() const { return m_diagnosticOverlay; }
+
 private:
     void processInput();
     void update(double dt);
@@ -192,6 +206,11 @@ private:
     ParticleSystem* m_particleSystem = nullptr;
     TweenSystem m_tweenSystem;
     DebugDrawSystem m_debugDrawSystem;
+
+    // Profiler, Resource Manager & Diagnostics (Stage 18)
+    Profiler m_profiler;
+    ResourceManager m_resourceManager;
+    DiagnosticOverlay m_diagnosticOverlay;
 
     bool m_running = false;
 };

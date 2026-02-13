@@ -157,6 +157,11 @@ add_library(gloaming_engine STATIC
     src/gameplay/TweenSystem.cpp
     src/gameplay/DebugDrawSystem.cpp
     src/gameplay/ParticlePolishLuaBindings.cpp
+    # Polish & Release (Stage 18)
+    src/engine/Profiler.cpp
+    src/engine/ResourceManager.cpp
+    src/engine/DiagnosticOverlay.cpp
+    src/engine/PolishLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC
