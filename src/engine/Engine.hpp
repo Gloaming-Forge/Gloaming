@@ -43,6 +43,11 @@
 #include "gameplay/ParticleSystem.hpp"
 #include "gameplay/TweenSystem.hpp"
 #include "gameplay/DebugDrawSystem.hpp"
+#include "engine/Gamepad.hpp"
+#include "engine/InputDeviceTracker.hpp"
+#include "engine/InputGlyphs.hpp"
+#include "engine/Haptics.hpp"
+#include "ui/OnScreenKeyboard.hpp"
 
 #include <string>
 #include <memory>
@@ -135,6 +140,17 @@ public:
     DiagnosticOverlay& getDiagnosticOverlay() { return m_diagnosticOverlay; }
     const DiagnosticOverlay& getDiagnosticOverlay() const { return m_diagnosticOverlay; }
 
+    // Gamepad, Input Device Tracker, Glyphs, Haptics & On-Screen Keyboard (Stage 19A)
+    Gamepad& getGamepad() { return m_gamepad; }
+    const Gamepad& getGamepad() const { return m_gamepad; }
+    InputDeviceTracker& getInputDeviceTracker() { return m_inputDeviceTracker; }
+    const InputDeviceTracker& getInputDeviceTracker() const { return m_inputDeviceTracker; }
+    InputGlyphProvider& getInputGlyphProvider() { return m_inputGlyphProvider; }
+    const InputGlyphProvider& getInputGlyphProvider() const { return m_inputGlyphProvider; }
+    Haptics& getHaptics() { return m_haptics; }
+    const Haptics& getHaptics() const { return m_haptics; }
+    OnScreenKeyboard& getOnScreenKeyboard() { return m_onScreenKeyboard; }
+
 private:
     void processInput();
     void update(double dt);
@@ -211,6 +227,13 @@ private:
     Profiler m_profiler;
     ResourceManager m_resourceManager;
     DiagnosticOverlay m_diagnosticOverlay;
+
+    // Gamepad, Input Device Tracker, Glyphs, Haptics & On-Screen Keyboard (Stage 19A)
+    Gamepad m_gamepad;
+    InputDeviceTracker m_inputDeviceTracker;
+    InputGlyphProvider m_inputGlyphProvider;
+    Haptics m_haptics;
+    OnScreenKeyboard m_onScreenKeyboard;
 
     bool m_running = false;
 };

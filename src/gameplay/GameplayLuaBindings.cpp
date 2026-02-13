@@ -1,6 +1,10 @@
 #include "gameplay/GameplayLuaBindings.hpp"
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
+#include "engine/Gamepad.hpp"
+#include "engine/InputDeviceTracker.hpp"
+#include "engine/InputGlyphs.hpp"
+#include "engine/Haptics.hpp"
 #include "gameplay/Gameplay.hpp"
 
 namespace gloaming {
@@ -50,6 +54,39 @@ static Key parseKey(const std::string& name) {
     if (name == "rctrl")      return Key::RightControl;
     LOG_WARN("parseKey: unrecognized key name '{}', defaulting to Space", name);
     return Key::Space;
+}
+
+/// Helper: convert a Lua gamepad button name to GamepadButton enum
+static GamepadButton parseGamepadButton(const std::string& name) {
+    if (name == "a" || name == "face_down")    return GamepadButton::FaceDown;
+    if (name == "b" || name == "face_right")   return GamepadButton::FaceRight;
+    if (name == "x" || name == "face_left")    return GamepadButton::FaceLeft;
+    if (name == "y" || name == "face_up")      return GamepadButton::FaceUp;
+    if (name == "lb" || name == "left_bumper")  return GamepadButton::LeftBumper;
+    if (name == "rb" || name == "right_bumper") return GamepadButton::RightBumper;
+    if (name == "select" || name == "back")     return GamepadButton::Select;
+    if (name == "start" || name == "menu")      return GamepadButton::Start;
+    if (name == "guide")                        return GamepadButton::Guide;
+    if (name == "ls" || name == "left_thumb")   return GamepadButton::LeftThumb;
+    if (name == "rs" || name == "right_thumb")  return GamepadButton::RightThumb;
+    if (name == "dpad_up")                      return GamepadButton::DpadUp;
+    if (name == "dpad_down")                    return GamepadButton::DpadDown;
+    if (name == "dpad_left")                    return GamepadButton::DpadLeft;
+    if (name == "dpad_right")                   return GamepadButton::DpadRight;
+    LOG_WARN("parseGamepadButton: unrecognized button '{}', defaulting to FaceDown", name);
+    return GamepadButton::FaceDown;
+}
+
+/// Helper: convert a Lua gamepad axis name to GamepadAxis enum
+static GamepadAxis parseGamepadAxis(const std::string& name) {
+    if (name == "left_x")         return GamepadAxis::LeftX;
+    if (name == "left_y")         return GamepadAxis::LeftY;
+    if (name == "right_x")        return GamepadAxis::RightX;
+    if (name == "right_y")        return GamepadAxis::RightY;
+    if (name == "left_trigger")   return GamepadAxis::LeftTrigger;
+    if (name == "right_trigger")  return GamepadAxis::RightTrigger;
+    LOG_WARN("parseGamepadAxis: unrecognized axis '{}', defaulting to LeftX", name);
+    return GamepadAxis::LeftX;
 }
 
 /// Helper: parse a PlaybackMode from Lua string (case-insensitive)
@@ -132,15 +169,15 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
     };
 
     inputApi["is_pressed"] = [&actions, &engine](const std::string& name) -> bool {
-        return actions.isActionPressed(name, engine.getInput());
+        return actions.isActionPressed(name, engine.getInput(), engine.getGamepad());
     };
 
     inputApi["is_down"] = [&actions, &engine](const std::string& name) -> bool {
-        return actions.isActionDown(name, engine.getInput());
+        return actions.isActionDown(name, engine.getInput(), engine.getGamepad());
     };
 
     inputApi["is_released"] = [&actions, &engine](const std::string& name) -> bool {
-        return actions.isActionReleased(name, engine.getInput());
+        return actions.isActionReleased(name, engine.getInput(), engine.getGamepad());
     };
 
     inputApi["get_bindings"] = [&actions, &engine](const std::string& name) -> sol::object {
@@ -783,6 +820,173 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         Entity entity = static_cast<Entity>(entityId);
         if (!registry.valid(entity) || !registry.has<Collider>(entity)) return;
         registry.get<Collider>(entity).enabled = enabled;
+    };
+
+    // =========================================================================
+    // Gamepad input API (Stage 19A) — gamepad state, device detection, glyphs
+    // =========================================================================
+    auto gpApi = lua.create_named_table("gamepad");
+
+    gpApi["is_connected"] = [&engine](sol::optional<int> id) -> bool {
+        return engine.getGamepad().isConnected(id.value_or(0));
+    };
+
+    gpApi["connected_count"] = [&engine]() -> int {
+        return engine.getGamepad().getConnectedCount();
+    };
+
+    gpApi["button_pressed"] = [&engine](const std::string& button) -> bool {
+        auto btn = parseGamepadButton(button);
+        return engine.getGamepad().isButtonPressed(btn);
+    };
+
+    gpApi["button_down"] = [&engine](const std::string& button) -> bool {
+        auto btn = parseGamepadButton(button);
+        return engine.getGamepad().isButtonDown(btn);
+    };
+
+    gpApi["button_released"] = [&engine](const std::string& button) -> bool {
+        auto btn = parseGamepadButton(button);
+        return engine.getGamepad().isButtonReleased(btn);
+    };
+
+    gpApi["axis"] = [&engine](const std::string& axis) -> float {
+        auto ax = parseGamepadAxis(axis);
+        return engine.getGamepad().getAxis(ax);
+    };
+
+    gpApi["left_stick"] = [&engine, &lua]() -> sol::table {
+        Vec2 stick = engine.getGamepad().getLeftStick();
+        sol::state_view luaView = engine.getModLoader().getLuaBindings().getState();
+        sol::table t = luaView.create_table();
+        t["x"] = stick.x;
+        t["y"] = stick.y;
+        return t;
+    };
+
+    gpApi["right_stick"] = [&engine, &lua]() -> sol::table {
+        Vec2 stick = engine.getGamepad().getRightStick();
+        sol::state_view luaView = engine.getModLoader().getLuaBindings().getState();
+        sol::table t = luaView.create_table();
+        t["x"] = stick.x;
+        t["y"] = stick.y;
+        return t;
+    };
+
+    gpApi["left_trigger"] = [&engine]() -> float {
+        return engine.getGamepad().getLeftTrigger();
+    };
+
+    gpApi["right_trigger"] = [&engine]() -> float {
+        return engine.getGamepad().getRightTrigger();
+    };
+
+    gpApi["set_deadzone"] = [&engine](float dz) {
+        engine.getGamepad().setDeadzone(dz);
+    };
+
+    gpApi["get_deadzone"] = [&engine]() -> float {
+        return engine.getGamepad().getDeadzone();
+    };
+
+    // =========================================================================
+    // Input device detection API (Stage 19A)
+    // =========================================================================
+    inputApi["active_device"] = [&engine]() -> std::string {
+        auto dev = engine.getInputDeviceTracker().getActiveDevice();
+        return (dev == InputDevice::Gamepad) ? "gamepad" : "keyboard";
+    };
+
+    inputApi["device_changed"] = [&engine]() -> bool {
+        return engine.getInputDeviceTracker().didDeviceChange();
+    };
+
+    // Analog action values
+    inputApi["action_value"] = [&actions, &engine](const std::string& name) -> float {
+        return actions.getActionValue(name, engine.getInput(), engine.getGamepad());
+    };
+
+    inputApi["movement_vector"] = [&actions, &engine, &lua]() -> sol::table {
+        Vec2 mv = actions.getMovementVector(
+            "move_left", "move_right", "move_up", "move_down",
+            engine.getInput(), engine.getGamepad());
+        sol::state_view luaView = engine.getModLoader().getLuaBindings().getState();
+        sol::table t = luaView.create_table();
+        t["x"] = mv.x;
+        t["y"] = mv.y;
+        return t;
+    };
+
+    // Gamepad bindings from Lua
+    inputApi["add_gamepad_binding"] = [&actions](const std::string& actionName,
+                                                  const std::string& button) {
+        actions.addGamepadBinding(actionName, parseGamepadButton(button));
+    };
+
+    inputApi["add_gamepad_axis_binding"] = [&actions](const std::string& actionName,
+                                                       const std::string& axis,
+                                                       float threshold) {
+        actions.addGamepadBinding(actionName, parseGamepadAxis(axis), threshold);
+    };
+
+    // =========================================================================
+    // Glyph API (Stage 19A) — input glyph text for current device
+    // =========================================================================
+    inputApi["get_glyph"] = [&actions, &engine](const std::string& actionName) -> std::string {
+        auto& glyphs = engine.getInputGlyphProvider();
+        auto& tracker = engine.getInputDeviceTracker();
+        return glyphs.getActionGlyph(actionName, actions, tracker.getActiveDevice(),
+                                     glyphs.getGlyphStyle());
+    };
+
+    inputApi["get_glyph_style"] = [&engine]() -> std::string {
+        switch (engine.getInputGlyphProvider().getGlyphStyle()) {
+            case GlyphStyle::Xbox:        return "xbox";
+            case GlyphStyle::PlayStation:  return "playstation";
+            case GlyphStyle::Nintendo:     return "nintendo";
+            case GlyphStyle::Keyboard:     return "keyboard";
+            case GlyphStyle::SteamDeck:    return "deck";
+        }
+        return "xbox";
+    };
+
+    inputApi["set_glyph_style"] = [&engine](const std::string& style) {
+        auto& glyphs = engine.getInputGlyphProvider();
+        if (style == "xbox")             glyphs.setGlyphStyle(GlyphStyle::Xbox);
+        else if (style == "playstation") glyphs.setGlyphStyle(GlyphStyle::PlayStation);
+        else if (style == "nintendo")    glyphs.setGlyphStyle(GlyphStyle::Nintendo);
+        else if (style == "keyboard")    glyphs.setGlyphStyle(GlyphStyle::Keyboard);
+        else if (style == "deck")        glyphs.setGlyphStyle(GlyphStyle::SteamDeck);
+        else LOG_WARN("input.set_glyph_style: unknown style '{}'", style);
+    };
+
+    // =========================================================================
+    // Haptics API (Stage 19A) — gamepad vibration/rumble
+    // =========================================================================
+    auto hapticsApi = lua.create_named_table("haptics");
+
+    hapticsApi["vibrate"] = [&engine](float left, float right, float duration) {
+        engine.getHaptics().vibrate(left, right, duration);
+    };
+
+    hapticsApi["impulse"] = [&engine](float intensity, sol::optional<float> durationMs) {
+        engine.getHaptics().impulse(intensity, durationMs.value_or(100.0f));
+    };
+
+    hapticsApi["stop"] = [&engine]() {
+        engine.getHaptics().stop();
+    };
+
+    hapticsApi["set_enabled"] = [&engine](bool enabled) {
+        engine.getHaptics().setEnabled(enabled);
+    };
+
+    hapticsApi["is_enabled"] = [&engine]() -> bool {
+        return engine.getHaptics().isEnabled();
+    };
+
+    hapticsApi["set_intensity"] = [&engine](float intensity) {
+        engine.getHaptics().setIntensity(intensity);
     };
 }
 

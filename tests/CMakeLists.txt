@@ -31,6 +31,7 @@ add_executable(gloaming_tests
     test_scenes_timers_save.cpp
     test_particles_polish.cpp
     test_polish.cpp
+    test_input_system.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE
