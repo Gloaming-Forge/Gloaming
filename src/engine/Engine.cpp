@@ -392,6 +392,7 @@ void Engine::run() {
 void Engine::processInput() {
     m_input.update();
     m_gamepad.update();
+    m_inputActions.latchAxisState(m_gamepad);
     m_inputDeviceTracker.update(m_input, m_gamepad);
 
     if (m_input.isKeyPressed(KEY_F11)) {
@@ -455,7 +456,7 @@ void Engine::update(double dt) {
     m_haptics.update(dtFloat);
 
     // Update on-screen keyboard
-    m_onScreenKeyboard.update(m_input, m_gamepad);
+    m_onScreenKeyboard.update(m_input, m_gamepad, dtFloat);
 
     // Handle camera controls for testing (Stage 1 demo)
     // Only active when no mod has assigned a CameraTarget to any entity.

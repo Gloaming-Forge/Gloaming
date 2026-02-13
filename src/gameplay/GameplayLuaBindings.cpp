@@ -855,7 +855,7 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         return engine.getGamepad().getAxis(ax);
     };
 
-    gpApi["left_stick"] = [&engine, &lua]() -> sol::table {
+    gpApi["left_stick"] = [&engine]() -> sol::table {
         Vec2 stick = engine.getGamepad().getLeftStick();
         sol::state_view luaView = engine.getModLoader().getLuaBindings().getState();
         sol::table t = luaView.create_table();
@@ -864,7 +864,7 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         return t;
     };
 
-    gpApi["right_stick"] = [&engine, &lua]() -> sol::table {
+    gpApi["right_stick"] = [&engine]() -> sol::table {
         Vec2 stick = engine.getGamepad().getRightStick();
         sol::state_view luaView = engine.getModLoader().getLuaBindings().getState();
         sol::table t = luaView.create_table();
@@ -906,7 +906,7 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         return actions.getActionValue(name, engine.getInput(), engine.getGamepad());
     };
 
-    inputApi["movement_vector"] = [&actions, &engine, &lua]() -> sol::table {
+    inputApi["movement_vector"] = [&actions, &engine]() -> sol::table {
         Vec2 mv = actions.getMovementVector(
             "move_left", "move_right", "move_up", "move_down",
             engine.getInput(), engine.getGamepad());

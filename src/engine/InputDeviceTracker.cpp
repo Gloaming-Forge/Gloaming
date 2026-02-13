@@ -41,8 +41,14 @@ bool InputDeviceTracker::didDeviceChange() const {
 }
 
 bool InputDeviceTracker::detectKeyboardMouseInput(const Input& input) const {
-    // Check for any key press using Raylib's GetKeyPressed (returns 0 if none)
-    if (GetKeyPressed() != 0) return true;
+    // Non-consuming keyboard activity check using IsKeyDown instead of
+    // GetKeyPressed() which would consume keys from the input queue.
+    for (int key = 32; key < 127; ++key) {
+        if (IsKeyDown(key)) return true;
+    }
+    for (int key = 256; key <= 348; ++key) {
+        if (IsKeyDown(key)) return true;
+    }
 
     // Check mouse movement
     float dx = static_cast<float>(GetMouseDelta().x);

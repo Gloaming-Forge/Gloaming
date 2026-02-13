@@ -21,7 +21,7 @@ public:
     /// Update with gamepad support.
     /// Returns true if the UI consumed the input.
     bool update(UIElement* root, const Input& input, const Gamepad& gamepad,
-                InputDevice activeDevice);
+                InputDevice activeDevice, float dt);
 
     /// Get the currently focused element
     UIElement* getFocusedElement() const { return m_focused; }
@@ -63,7 +63,7 @@ private:
     int findFocusIndex(const std::vector<UIElement*>& list) const;
 
     /// Process gamepad input for UI navigation
-    bool processGamepadInput(UIElement* root, const Gamepad& gamepad);
+    bool processGamepadInput(UIElement* root, const Gamepad& gamepad, float dt);
 
     /// Find the nearest focusable element in a spatial direction
     UIElement* findSpatialNeighbor(UIElement* root, int dx, int dy) const;

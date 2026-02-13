@@ -1,5 +1,6 @@
 #include "ui/OnScreenKeyboard.hpp"
 
+#include <raylib.h>
 #include <algorithm>
 #include <cctype>
 
@@ -23,22 +24,18 @@ bool OnScreenKeyboard::isVisible() const {
     return m_visible;
 }
 
-void OnScreenKeyboard::update(const Input& input, const Gamepad& gamepad) {
+void OnScreenKeyboard::update(const Input& input, const Gamepad& gamepad, float dt) {
     if (!m_visible) return;
 
-    // Handle direct keyboard typing (passthrough when using keyboard)
-    int charPressed = 0;
-    // Check for character input from Raylib
-    // Note: We check common printable characters via key state
-    for (int c = 32; c < 127; ++c) {
-        if (input.isKeyPressed(c)) {
-            charPressed = c;
-            break;
+    // Handle direct keyboard typing via Raylib's character input queue.
+    // GetCharPressed() returns Unicode codepoints properly handling shift/modifiers,
+    // unlike looping over raw key codes which can't distinguish 'a' from 'A'.
+    int charCode = GetCharPressed();
+    while (charCode > 0) {
+        if (charCode >= 32 && charCode < 127 && static_cast<int>(m_text.size()) < m_maxChars) {
+            m_text += static_cast<char>(charCode);
         }
-    }
-
-    if (charPressed != 0 && static_cast<int>(m_text.size()) < m_maxChars) {
-        m_text += static_cast<char>(charPressed);
+        charCode = GetCharPressed();
     }
 
     // Keyboard shortcuts
@@ -74,7 +71,7 @@ void OnScreenKeyboard::update(const Input& input, const Gamepad& gamepad) {
             m_navHeld = true;
             m_navTimer = m_navRepeatDelay;
         } else {
-            m_navTimer -= 1.0f / 60.0f; // Approximate; ideally pass dt
+            m_navTimer -= dt;
             if (m_navTimer <= 0.0f) {
                 if (stick.x < -0.5f) dx = -1;
                 if (stick.x > 0.5f)  dx = 1;

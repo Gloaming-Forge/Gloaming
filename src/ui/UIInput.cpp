@@ -78,7 +78,7 @@ bool UIInput::update(UIElement* root, const Input& input) {
 }
 
 bool UIInput::update(UIElement* root, const Input& input, const Gamepad& gamepad,
-                     InputDevice activeDevice) {
+                     InputDevice activeDevice, float dt) {
     if (!root) return false;
 
     // Process keyboard/mouse input as before
@@ -86,7 +86,7 @@ bool UIInput::update(UIElement* root, const Input& input, const Gamepad& gamepad
 
     // Process gamepad input if enabled
     if (m_gamepadNavEnabled && activeDevice == InputDevice::Gamepad) {
-        if (processGamepadInput(root, gamepad)) {
+        if (processGamepadInput(root, gamepad, dt)) {
             consumed = true;
             m_consumedInput = true;
         }
@@ -104,7 +104,7 @@ bool UIInput::update(UIElement* root, const Input& input, const Gamepad& gamepad
     return consumed;
 }
 
-bool UIInput::processGamepadInput(UIElement* root, const Gamepad& gamepad) {
+bool UIInput::processGamepadInput(UIElement* root, const Gamepad& gamepad, float dt) {
     bool consumed = false;
 
     // D-pad navigation
@@ -134,7 +134,7 @@ bool UIInput::processGamepadInput(UIElement* root, const Gamepad& gamepad) {
             dy = stickDy;
             m_navTimer = m_navRepeatDelay;
         } else {
-            m_navTimer -= 1.0f / 60.0f; // Approximate frame time
+            m_navTimer -= dt;
             if (m_navTimer <= 0.0f) {
                 dx = stickDx;
                 dy = stickDy;
@@ -165,16 +165,15 @@ bool UIInput::processGamepadInput(UIElement* root, const Gamepad& gamepad) {
         }
     }
 
-    // Bumpers for tab switching (LB = prev tab, RB = next tab)
-    if (m_focused) {
-        if (gamepad.isButtonPressed(GamepadButton::LeftBumper)) {
-            m_focused->handleKeyPress(static_cast<int>(Key::Left));
-            consumed = true;
-        }
-        if (gamepad.isButtonPressed(GamepadButton::RightBumper)) {
-            m_focused->handleKeyPress(static_cast<int>(Key::Right));
-            consumed = true;
-        }
+    // Bumpers navigate focus (LB = prev, RB = next) rather than
+    // sending arrow keys, which could confuse non-slider elements.
+    if (gamepad.isButtonPressed(GamepadButton::LeftBumper)) {
+        focusPrev(root);
+        consumed = true;
+    }
+    if (gamepad.isButtonPressed(GamepadButton::RightBumper)) {
+        focusNext(root);
+        consumed = true;
     }
 
     return consumed;

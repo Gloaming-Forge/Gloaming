@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rendering/IRenderer.hpp"
+#include "engine/Vec2.hpp"
 
 #include <cstdint>
 

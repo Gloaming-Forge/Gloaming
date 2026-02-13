@@ -26,7 +26,7 @@ public:
     bool isVisible() const;
 
     /// Update (process keyboard input from gamepad and keyboard)
-    void update(const Input& input, const Gamepad& gamepad);
+    void update(const Input& input, const Gamepad& gamepad, float dt);
 
     /// Render the built-in keyboard overlay
     void render(IRenderer* renderer);
