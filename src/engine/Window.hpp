@@ -46,9 +46,14 @@ public:
     /// Check if the window is focused (for suspend/resume detection)
     bool isFocused() const;
 
+    /// Check if the window size changed since the last call to this method.
+    bool sizeChanged();
+
 private:
     bool m_initialized = false;
     FullscreenMode m_fullscreenMode = FullscreenMode::Windowed;
+    int m_lastWidth = 0;
+    int m_lastHeight = 0;
 };
 
 } // namespace gloaming

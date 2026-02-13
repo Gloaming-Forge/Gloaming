@@ -24,11 +24,6 @@ namespace {
         const char* val = std::getenv("SteamDeck");
         return val != nullptr && std::string(val) == "1";
     }
-
-    bool isSteamOS() {
-        const char* val = std::getenv("SteamOS");
-        return val != nullptr;
-    }
 } // anonymous namespace
 
 bool Engine::init(const std::string& configPath) {
@@ -49,9 +44,9 @@ bool Engine::init(const std::string& configPath) {
 
     // Platform-aware defaults for Steam Deck
     bool onDeck = isSteamDeck();
-    int defaultWidth  = onDeck ? 1280 : 1280;
-    int defaultHeight = onDeck ? 800  : 720;
-    bool defaultFS    = onDeck ? true : false;
+    int defaultWidth  = 1280;
+    int defaultHeight = onDeck ? 800 : 720;
+    bool defaultFS    = onDeck;
 
     // Create window
     WindowConfig winCfg;
@@ -406,8 +401,13 @@ bool Engine::init(const std::string& configPath) {
         UIScalingConfig uiCfg;
         uiCfg.baseScale   = m_config.getFloat("display.ui_scale", 1.0f);
         uiCfg.minFontSize = m_config.getInt("display.min_font_size", 12);
+        uiCfg.dpiScale    = m_config.getFloat("display.dpi_scale", 0.0f);
+        bool autoDpi = (uiCfg.dpiScale <= 0.0f);
+        if (autoDpi) uiCfg.dpiScale = 1.0f;  // Reset to default before configure
         m_uiScaling.configure(uiCfg);
-        m_uiScaling.autoDetect(m_window.getWidth(), m_window.getHeight());
+        if (autoDpi) {
+            m_uiScaling.autoDetect(m_window.getWidth(), m_window.getHeight());
+        }
 
         // Target FPS (for battery management on Deck)
         int targetFPS = m_config.getInt("performance.target_fps", onDeck ? 60 : 0);
@@ -464,24 +464,33 @@ void Engine::processInput() {
     m_gamepad.update();
     m_inputDeviceTracker.update(m_input, m_gamepad);
 
-    // Update viewport scaler on window resize
-    m_viewportScaler.update(m_window.getWidth(), m_window.getHeight());
-    m_camera.setScreenSize(
-        static_cast<float>(m_viewportScaler.getEffectiveWidth()),
-        static_cast<float>(m_viewportScaler.getEffectiveHeight()));
+    // Update viewport scaler only when window size actually changes
+    if (m_window.sizeChanged()) {
+        m_viewportScaler.update(m_window.getWidth(), m_window.getHeight());
+        m_camera.setScreenSize(
+            static_cast<float>(m_viewportScaler.getEffectiveWidth()),
+            static_cast<float>(m_viewportScaler.getEffectiveHeight()));
+    }
 
     // Suspend/resume detection (Stage 19B — for Steam Deck sleep/wake)
+    // Uses a threshold to avoid pausing audio on brief focus losses (alt-tab, overlay popups).
     if (!m_window.isFocused()) {
-        if (!m_wasSuspended && m_audioSystem) {
-            m_audioSystem->setMusicPaused(true);
+        m_unfocusedTimer += static_cast<float>(m_time.deltaTime());
+        if (!m_wasSuspended && m_unfocusedTimer >= SUSPEND_THRESHOLD) {
+            if (m_audioSystem) {
+                m_audioSystem->setMusicPaused(true);
+            }
+            m_wasSuspended = true;
         }
-        m_wasSuspended = true;
-    } else if (m_wasSuspended) {
-        if (m_audioSystem) {
-            m_audioSystem->setMusicPaused(false);
+    } else {
+        if (m_wasSuspended) {
+            if (m_audioSystem) {
+                m_audioSystem->setMusicPaused(false);
+            }
+            m_time.clampNextDelta(0.1);  // Prevent physics explosion after long suspend
         }
-        m_time.clampNextDelta(0.1);  // Prevent physics explosion after long suspend
         m_wasSuspended = false;
+        m_unfocusedTimer = 0.0f;
     }
 
     if (m_input.isKeyPressed(KEY_F11)) {

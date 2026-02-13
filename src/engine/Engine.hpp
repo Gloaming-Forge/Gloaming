@@ -247,6 +247,8 @@ private:
     ViewportScaler m_viewportScaler;
     UIScaling m_uiScaling;
     bool m_wasSuspended = false;
+    float m_unfocusedTimer = 0.0f;
+    static constexpr float SUSPEND_THRESHOLD = 1.0f;  // Seconds unfocused before treating as suspend
 
     bool m_running = false;
 };

@@ -25,12 +25,11 @@ bool Window::init(const WindowConfig& config) {
 
     if (config.fullscreen) {
         if (config.fullscreenMode == FullscreenMode::Fullscreen) {
-            // Exclusive fullscreen
             ToggleFullscreen();
             m_fullscreenMode = FullscreenMode::Fullscreen;
         } else if (config.fullscreenMode == FullscreenMode::BorderlessFullscreen) {
-            // Borderless fullscreen is handled by the config flags above
-            ToggleBorderlessWindowed();
+            // Borderless is already applied via FLAG_BORDERLESS_WINDOWED_MODE above;
+            // calling ToggleBorderlessWindowed() here would double-toggle it off.
             m_fullscreenMode = FullscreenMode::BorderlessFullscreen;
         }
     } else {
@@ -119,6 +118,17 @@ bool Window::isFullscreen() const {
 
 bool Window::isFocused() const {
     return IsWindowFocused();
+}
+
+bool Window::sizeChanged() {
+    int w = getWidth();
+    int h = getHeight();
+    if (w != m_lastWidth || h != m_lastHeight) {
+        m_lastWidth = w;
+        m_lastHeight = h;
+        return true;
+    }
+    return false;
 }
 
 } // namespace gloaming

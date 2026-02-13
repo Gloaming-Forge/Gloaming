@@ -22,7 +22,8 @@ public:
     double fps() const { return m_fps; }
 
     /// Set a target frame rate (0 = uncapped / vsync only).
-    /// Uses Raylib's SetTargetFPS under the hood.
+    /// Note: calls Raylib's SetTargetFPS(), which requires an initialized
+    /// Raylib window.  Do not call from unit tests without a window context.
     void setTargetFPS(int fps);
 
     /// Get the current target FPS (0 = uncapped).

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cmath>
 #include "rendering/ViewportScaler.hpp"
 #include "ui/UIScaling.hpp"
 #include "engine/Time.hpp"
