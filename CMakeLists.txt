@@ -162,6 +162,13 @@ add_library(gloaming_engine STATIC
     src/engine/ResourceManager.cpp
     src/engine/DiagnosticOverlay.cpp
     src/engine/PolishLuaBindings.cpp
+    # Input System — Steam Deck Support (Stage 19A)
+    src/gameplay/InputActions.cpp
+    src/engine/Gamepad.cpp
+    src/engine/InputDeviceTracker.cpp
+    src/engine/InputGlyphs.cpp
+    src/engine/Haptics.cpp
+    src/ui/OnScreenKeyboard.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

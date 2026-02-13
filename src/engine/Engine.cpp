@@ -335,8 +335,29 @@ bool Engine::init(const std::string& configPath) {
                  targetFPS, m_profiler.frameBudgetMs(), m_profiler.isEnabled());
     }
 
+    // Initialize gamepad and input systems (Stage 19A)
+    {
+        float deadzone = m_config.getFloat("input.gamepad_deadzone", 0.15f);
+        m_gamepad.setDeadzone(deadzone);
+
+        bool rumbleEnabled = m_config.getBool("input.rumble_enabled", true);
+        float rumbleIntensity = m_config.getFloat("input.rumble_intensity", 1.0f);
+        m_haptics.setEnabled(rumbleEnabled);
+        m_haptics.setIntensity(rumbleIntensity);
+
+        std::string glyphStyle = m_config.getString("input.glyph_style", "xbox");
+        if (glyphStyle == "playstation")       m_inputGlyphProvider.setGlyphStyle(GlyphStyle::PlayStation);
+        else if (glyphStyle == "nintendo")     m_inputGlyphProvider.setGlyphStyle(GlyphStyle::Nintendo);
+        else if (glyphStyle == "keyboard")     m_inputGlyphProvider.setGlyphStyle(GlyphStyle::Keyboard);
+        else if (glyphStyle == "deck")         m_inputGlyphProvider.setGlyphStyle(GlyphStyle::SteamDeck);
+        else                                   m_inputGlyphProvider.setGlyphStyle(GlyphStyle::Xbox);
+
+        LOG_INFO("Input systems initialized (gamepad deadzone={:.2f}, rumble={}, glyph_style={})",
+                 deadzone, rumbleEnabled, glyphStyle);
+    }
+
     m_running = true;
-    LOG_INFO("Engine initialized successfully — Stage 18: Polish & Release");
+    LOG_INFO("Engine initialized successfully — Stage 19A: Input System");
     return true;
 }
 
@@ -370,6 +391,8 @@ void Engine::run() {
 
 void Engine::processInput() {
     m_input.update();
+    m_gamepad.update();
+    m_inputDeviceTracker.update(m_input, m_gamepad);
 
     if (m_input.isKeyPressed(KEY_F11)) {
         m_window.toggleFullscreen();
@@ -428,6 +451,12 @@ void Engine::update(double dt) {
     // Update tweens
     m_tweenSystem.update(dtFloat, m_registry);
 
+    // Update haptics (tick down vibrations)
+    m_haptics.update(dtFloat);
+
+    // Update on-screen keyboard
+    m_onScreenKeyboard.update(m_input, m_gamepad, dtFloat);
+
     // Handle camera controls for testing (Stage 1 demo)
     // Only active when no mod has assigned a CameraTarget to any entity.
     // The CameraControllerSystem is always registered, but it does nothing without
@@ -465,6 +494,10 @@ void Engine::update(double dt) {
     if (m_tileMap.isWorldLoaded()) {
         m_tileMap.update(m_camera);
     }
+
+    // Latch axis state at end of frame so m_prevAxisValues holds this frame's
+    // values when next frame's checkBinding compares current vs previous.
+    m_inputActions.latchAxisState(m_gamepad);
 }
 
 void Engine::render() {
@@ -532,13 +565,16 @@ void Engine::render() {
     // Render scene transition overlay (on top of everything)
     m_sceneManager.renderTransition(m_renderer.get());
 
+    // Render on-screen keyboard (above everything else)
+    m_onScreenKeyboard.render(m_renderer.get());
+
     // Render diagnostic overlay (Stage 18) — replaces old HUD when active
     if (m_diagnosticOverlay.isVisible()) {
         m_diagnosticOverlay.render(m_renderer.get(), m_profiler, m_resourceManager, *this);
     } else {
         // Default HUD (when diagnostics overlay is off)
         char bannerBuf[128];
-        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 18: Polish & Release", kEngineVersion);
+        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19A: Input System", kEngineVersion);
         m_renderer->drawText(bannerBuf, {20, 20}, 20, Color::White());
 
         char fpsText[64];
@@ -671,10 +707,20 @@ void Engine::render() {
                      rStats.totalCount);
             m_renderer->drawText(profText, {20, 380}, 16, Color(200, 220, 255, 255));
         }
+
+        // Input device info (Stage 19A)
+        {
+            const char* deviceStr = (m_inputDeviceTracker.getActiveDevice() == InputDevice::Gamepad) ? "Gamepad" : "Keyboard/Mouse";
+            int gpCount = m_gamepad.getConnectedCount();
+            char inputText[128];
+            snprintf(inputText, sizeof(inputText), "Input: %s | Gamepads: %d connected",
+                     deviceStr, gpCount);
+            m_renderer->drawText(inputText, {20, 410}, 16, Color(180, 220, 255, 255));
+        }
     }
 
     m_renderer->drawText("WASD/Arrows: Move | Q/E: Zoom | F2: Diagnostics | F3: Debug | F4: Profiler | L: Light | F11: FS",
-                         {20, 410}, 16, Color::Gray());
+                         {20, 440}, 16, Color::Gray());
 
     m_renderer->endFrame();
     // Camera shake offset is automatically undone by ShakeGuard destructor

@@ -1,5 +1,8 @@
 #include "ui/UIInput.hpp"
 
+#include <cmath>
+#include <limits>
+
 namespace gloaming {
 
 bool UIInput::update(UIElement* root, const Input& input) {
@@ -74,6 +77,108 @@ bool UIInput::update(UIElement* root, const Input& input) {
     return m_consumedInput;
 }
 
+bool UIInput::update(UIElement* root, const Input& input, const Gamepad& gamepad,
+                     InputDevice activeDevice, float dt) {
+    if (!root) return false;
+
+    // Process keyboard/mouse input as before
+    bool consumed = update(root, input);
+
+    // Process gamepad input if enabled
+    if (m_gamepadNavEnabled && activeDevice == InputDevice::Gamepad) {
+        if (processGamepadInput(root, gamepad, dt)) {
+            consumed = true;
+            m_consumedInput = true;
+        }
+    }
+
+    // Auto-focus first element when gamepad is active and nothing is focused
+    if (activeDevice == InputDevice::Gamepad && !m_focused && m_gamepadNavEnabled) {
+        std::vector<UIElement*> focusable;
+        collectFocusable(root, focusable);
+        if (!focusable.empty()) {
+            setFocus(focusable[0]);
+        }
+    }
+
+    return consumed;
+}
+
+bool UIInput::processGamepadInput(UIElement* root, const Gamepad& gamepad, float dt) {
+    bool consumed = false;
+
+    // D-pad navigation
+    int dx = 0, dy = 0;
+    if (gamepad.isButtonPressed(GamepadButton::DpadLeft))  dx = -1;
+    if (gamepad.isButtonPressed(GamepadButton::DpadRight)) dx = 1;
+    if (gamepad.isButtonPressed(GamepadButton::DpadUp))    dy = -1;
+    if (gamepad.isButtonPressed(GamepadButton::DpadDown))  dy = 1;
+
+    // Left stick navigation with auto-repeat
+    Vec2 stick = gamepad.getLeftStick();
+    bool stickActive = (stick.lengthSquared() > 0.25f);
+
+    if (stickActive) {
+        int stickDx = 0, stickDy = 0;
+        if (stick.x < -0.5f) stickDx = -1;
+        if (stick.x > 0.5f)  stickDx = 1;
+        if (stick.y < -0.5f) stickDy = -1;
+        if (stick.y > 0.5f)  stickDy = 1;
+
+        bool directionChanged = (stickDx != m_lastNavDx || stickDy != m_lastNavDy);
+        m_lastNavDx = stickDx;
+        m_lastNavDy = stickDy;
+
+        if (directionChanged) {
+            dx = stickDx;
+            dy = stickDy;
+            m_navTimer = m_navRepeatDelay;
+        } else {
+            m_navTimer -= dt;
+            if (m_navTimer <= 0.0f) {
+                dx = stickDx;
+                dy = stickDy;
+                m_navTimer = m_navRepeatRate;
+            }
+        }
+    } else {
+        m_lastNavDx = 0;
+        m_lastNavDy = 0;
+        m_navTimer = 0.0f;
+    }
+
+    if (dx != 0 || dy != 0) {
+        navigateFocus(root, dx, dy);
+        consumed = true;
+    }
+
+    // A button = confirm/click the focused element
+    if (gamepad.isButtonPressed(GamepadButton::FaceDown)) {
+        confirmFocus();
+        consumed = true;
+    }
+
+    // B button = cancel/back
+    if (gamepad.isButtonPressed(GamepadButton::FaceRight)) {
+        if (cancelFocus()) {
+            consumed = true;
+        }
+    }
+
+    // Bumpers navigate focus (LB = prev, RB = next) rather than
+    // sending arrow keys, which could confuse non-slider elements.
+    if (gamepad.isButtonPressed(GamepadButton::LeftBumper)) {
+        focusPrev(root);
+        consumed = true;
+    }
+    if (gamepad.isButtonPressed(GamepadButton::RightBumper)) {
+        focusNext(root);
+        consumed = true;
+    }
+
+    return consumed;
+}
+
 void UIInput::setFocus(UIElement* element) {
     if (m_focused) {
         m_focused->setFocused(false);
@@ -120,6 +225,107 @@ void UIInput::focusPrev(UIElement* root) {
     int idx = findFocusIndex(focusable);
     int prev = (idx <= 0) ? static_cast<int>(focusable.size()) - 1 : idx - 1;
     setFocus(focusable[prev]);
+}
+
+void UIInput::setGamepadNavigationEnabled(bool enabled) {
+    m_gamepadNavEnabled = enabled;
+}
+
+void UIInput::setSpatialNavigation(bool enabled) {
+    m_spatialNav = enabled;
+}
+
+void UIInput::navigateFocus(UIElement* root, int dx, int dy) {
+    if (!root) return;
+
+    if (m_spatialNav && m_focused) {
+        UIElement* neighbor = findSpatialNeighbor(root, dx, dy);
+        if (neighbor) {
+            setFocus(neighbor);
+            return;
+        }
+    }
+
+    // Linear navigation: up/left = prev, down/right = next
+    if (dy < 0 || dx < 0) {
+        focusPrev(root);
+    } else if (dy > 0 || dx > 0) {
+        focusNext(root);
+    }
+}
+
+void UIInput::confirmFocus() {
+    if (!m_focused) return;
+
+    auto& layout = m_focused->getLayout();
+    float cx = layout.x + layout.width * 0.5f;
+    float cy = layout.y + layout.height * 0.5f;
+    m_focused->handleMousePress(cx, cy);
+    m_focused->handleMouseRelease(cx, cy);
+}
+
+bool UIInput::cancelFocus() {
+    // B button navigates back — clear focus as a basic behavior.
+    // In a full implementation, this would trigger screen pop/navigation back.
+    if (m_focused) {
+        setFocus(nullptr);
+        return true;
+    }
+    return false;
+}
+
+UIElement* UIInput::findSpatialNeighbor(UIElement* root, int dx, int dy) const {
+    if (!m_focused) return nullptr;
+
+    std::vector<UIElement*> focusable;
+    collectFocusable(root, focusable);
+    if (focusable.empty()) return nullptr;
+
+    auto& currentLayout = m_focused->getLayout();
+    float cx = currentLayout.x + currentLayout.width * 0.5f;
+    float cy = currentLayout.y + currentLayout.height * 0.5f;
+
+    UIElement* best = nullptr;
+    float bestScore = std::numeric_limits<float>::max();
+
+    for (auto* candidate : focusable) {
+        if (candidate == m_focused) continue;
+
+        auto& candLayout = candidate->getLayout();
+        float candX = candLayout.x + candLayout.width * 0.5f;
+        float candY = candLayout.y + candLayout.height * 0.5f;
+
+        float deltaX = candX - cx;
+        float deltaY = candY - cy;
+
+        // Filter: only consider candidates in the correct direction
+        bool valid = false;
+        if (dx > 0 && deltaX > 0) valid = true;
+        if (dx < 0 && deltaX < 0) valid = true;
+        if (dy > 0 && deltaY > 0) valid = true;
+        if (dy < 0 && deltaY < 0) valid = true;
+        if (!valid) continue;
+
+        // Score: prefer candidates that are mostly aligned on the primary axis
+        // Use weighted distance: primary axis distance + 3x cross-axis distance
+        float primaryDist = 0.0f;
+        float crossDist = 0.0f;
+        if (dx != 0) {
+            primaryDist = std::abs(deltaX);
+            crossDist = std::abs(deltaY);
+        } else {
+            primaryDist = std::abs(deltaY);
+            crossDist = std::abs(deltaX);
+        }
+
+        float score = primaryDist + crossDist * 3.0f;
+        if (score < bestScore) {
+            bestScore = score;
+            best = candidate;
+        }
+    }
+
+    return best;
 }
 
 } // namespace gloaming

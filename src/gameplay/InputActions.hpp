@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Input.hpp"
+#include "engine/Gamepad.hpp"
 
 #include <string>
 #include <vector>
@@ -8,182 +9,134 @@
 
 namespace gloaming {
 
+/// Source type for an input binding — keyboard key, gamepad button, or gamepad axis.
+enum class InputSourceType {
+    Key,            // Keyboard key
+    GamepadButton,  // Gamepad digital button
+    GamepadAxis,    // Gamepad analog axis (treated as digital with threshold)
+};
+
 /// An abstract input action that can be bound to multiple keys/buttons.
 /// Games define their own actions (e.g., "move_up", "jump", "interact", "fire")
-/// and bind them to keys via configuration or Lua.
+/// and bind them to keys or gamepad controls via configuration or Lua.
 struct InputBinding {
+    InputSourceType sourceType = InputSourceType::Key;
+
+    // Keyboard binding
     Key key = Key::Space;
     bool requireShift = false;
     bool requireCtrl = false;
     bool requireAlt = false;
+
+    // Gamepad binding
+    GamepadButton gamepadButton = GamepadButton::FaceDown;
+    GamepadAxis   gamepadAxis = GamepadAxis::LeftX;
+    float         axisThreshold = 0.5f;  // Axis value at which it counts as "pressed"
+    bool          axisPositive = true;   // true = positive direction, false = negative
 };
 
-/// Input action map — maps named actions to key bindings.
+/// Input action map — maps named actions to key and gamepad bindings.
 /// Mods define actions and bind them; game code queries actions instead of raw keys.
 class InputActionMap {
 public:
     /// Register a named action with a default key binding
-    void registerAction(const std::string& name, Key defaultKey) {
-        m_actions[name] = {{defaultKey}};
-    }
+    void registerAction(const std::string& name, Key defaultKey);
 
     /// Register a named action with multiple bindings
-    void registerAction(const std::string& name, std::vector<InputBinding> bindings) {
-        m_actions[name] = std::move(bindings);
-    }
+    void registerAction(const std::string& name, std::vector<InputBinding> bindings);
 
-    /// Add an additional binding to an existing action
-    void addBinding(const std::string& name, Key key) {
-        m_actions[name].push_back({key});
-    }
+    /// Add an additional keyboard binding to an existing action
+    void addBinding(const std::string& name, Key key);
+
+    /// Add a gamepad button binding to an existing action
+    void addGamepadBinding(const std::string& name, GamepadButton button);
+
+    /// Add a gamepad axis binding to an existing action (e.g., left stick left = LeftX, threshold -0.5)
+    void addGamepadBinding(const std::string& name, GamepadAxis axis, float threshold);
 
     /// Remove all bindings for an action
-    void clearBindings(const std::string& name) {
-        auto it = m_actions.find(name);
-        if (it != m_actions.end()) {
-            it->second.clear();
-        }
-    }
+    void clearBindings(const std::string& name);
 
     /// Rebind an action to a single key (replaces all existing bindings)
-    void rebind(const std::string& name, Key key) {
-        m_actions[name] = {{key}};
-    }
+    void rebind(const std::string& name, Key key);
 
-    /// Check if an action was just pressed this frame
-    bool isActionPressed(const std::string& name, const Input& input) const {
-        auto it = m_actions.find(name);
-        if (it == m_actions.end()) return false;
-        for (const auto& binding : it->second) {
-            if (checkModifiers(binding, input) && input.isKeyPressed(binding.key)) {
-                return true;
-            }
-        }
-        return false;
-    }
+    /// Check if an action was just pressed this frame (keyboard + gamepad)
+    bool isActionPressed(const std::string& name, const Input& input,
+                         const Gamepad& gamepad) const;
 
-    /// Check if an action is currently held down
-    bool isActionDown(const std::string& name, const Input& input) const {
-        auto it = m_actions.find(name);
-        if (it == m_actions.end()) return false;
-        for (const auto& binding : it->second) {
-            if (checkModifiers(binding, input) && input.isKeyDown(binding.key)) {
-                return true;
-            }
-        }
-        return false;
-    }
+    /// Backward-compatible overload: keyboard only
+    bool isActionPressed(const std::string& name, const Input& input) const;
 
-    /// Check if an action was just released this frame
-    bool isActionReleased(const std::string& name, const Input& input) const {
-        auto it = m_actions.find(name);
-        if (it == m_actions.end()) return false;
-        for (const auto& binding : it->second) {
-            if (checkModifiers(binding, input) && input.isKeyReleased(binding.key)) {
-                return true;
-            }
-        }
-        return false;
-    }
+    /// Check if an action is currently held down (keyboard + gamepad)
+    bool isActionDown(const std::string& name, const Input& input,
+                      const Gamepad& gamepad) const;
+
+    /// Backward-compatible overload: keyboard only
+    bool isActionDown(const std::string& name, const Input& input) const;
+
+    /// Check if an action was just released this frame (keyboard + gamepad)
+    bool isActionReleased(const std::string& name, const Input& input,
+                          const Gamepad& gamepad) const;
+
+    /// Backward-compatible overload: keyboard only
+    bool isActionReleased(const std::string& name, const Input& input) const;
+
+    /// Get analog value for an action (0.0–1.0 for digital, raw axis for analog).
+    /// Falls back to 1.0 if a keyboard key is held, or axis value if gamepad.
+    float getActionValue(const std::string& name, const Input& input,
+                         const Gamepad& gamepad) const;
+
+    /// Get 2D vector for a movement pair.
+    /// Returns normalized direction with analog magnitude from sticks.
+    Vec2 getMovementVector(const std::string& leftAction, const std::string& rightAction,
+                           const std::string& upAction, const std::string& downAction,
+                           const Input& input, const Gamepad& gamepad) const;
 
     /// Check if an action exists
-    bool hasAction(const std::string& name) const {
-        return m_actions.count(name) > 0;
-    }
+    bool hasAction(const std::string& name) const;
 
-    /// Get the bindings for an action (useful for UI prompts like "Press [Z] to interact")
-    const std::vector<InputBinding>& getBindings(const std::string& name) const {
-        static const std::vector<InputBinding> empty;
-        auto it = m_actions.find(name);
-        if (it == m_actions.end()) return empty;
-        return it->second;
-    }
+    /// Get the bindings for an action
+    const std::vector<InputBinding>& getBindings(const std::string& name) const;
 
     /// Get all registered action names
-    std::vector<std::string> getActionNames() const {
-        std::vector<std::string> names;
-        names.reserve(m_actions.size());
-        for (const auto& [name, _] : m_actions) {
-            names.push_back(name);
-        }
-        return names;
-    }
+    std::vector<std::string> getActionNames() const;
 
     /// Clear all registered actions and bindings
-    void clearAll() {
-        m_actions.clear();
-    }
+    void clearAll();
 
-    /// Register common presets for different game types
+    // ========================================================================
+    // Presets — register common bindings for different game types
+    // ========================================================================
 
-    /// Platformer preset: left, right, jump, attack, interact, menu
-    void registerPlatformerDefaults() {
-        registerAction("move_left",  Key::A);
-        addBinding("move_left", Key::Left);
-        registerAction("move_right", Key::D);
-        addBinding("move_right", Key::Right);
-        registerAction("move_up",    Key::W);
-        addBinding("move_up", Key::Up);
-        registerAction("move_down",  Key::S);
-        addBinding("move_down", Key::Down);
-        registerAction("jump",       Key::Space);
-        registerAction("attack",     Key::Z);
-        registerAction("interact",   Key::E);
-        registerAction("menu",       Key::Escape);
-        registerAction("inventory",  Key::Tab);
-    }
+    /// Platformer preset: movement, jump, attack, interact, menu
+    void registerPlatformerDefaults();
 
     /// Top-down RPG preset: directional movement, interact, menu
-    void registerTopDownDefaults() {
-        registerAction("move_left",  Key::A);
-        addBinding("move_left", Key::Left);
-        registerAction("move_right", Key::D);
-        addBinding("move_right", Key::Right);
-        registerAction("move_up",    Key::W);
-        addBinding("move_up", Key::Up);
-        registerAction("move_down",  Key::S);
-        addBinding("move_down", Key::Down);
-        registerAction("interact",   Key::Z);
-        addBinding("interact", Key::Enter);
-        registerAction("cancel",     Key::X);
-        addBinding("cancel", Key::Escape);
-        registerAction("menu",       Key::Escape);
-        registerAction("run",        Key::LeftShift);
-    }
+    void registerTopDownDefaults();
 
     /// Flight/shooter preset: pitch, thrust, fire, bomb
-    void registerFlightDefaults() {
-        registerAction("pitch_up",    Key::W);
-        addBinding("pitch_up", Key::Up);
-        registerAction("pitch_down",  Key::S);
-        addBinding("pitch_down", Key::Down);
-        registerAction("thrust",      Key::D);
-        addBinding("thrust", Key::Right);
-        registerAction("brake",       Key::A);
-        addBinding("brake", Key::Left);
-        registerAction("fire",        Key::Space);
-        registerAction("bomb",        Key::B);
-        registerAction("menu",        Key::Escape);
-    }
+    void registerFlightDefaults();
+
+    /// Call once per frame after gamepad update to latch axis values.
+    /// Required for correct Pressed/Released edge detection on axis bindings.
+    void latchAxisState(const Gamepad& gamepad);
 
 private:
-    bool checkModifiers(const InputBinding& binding, const Input& input) const {
-        if (binding.requireShift &&
-            !input.isKeyDown(Key::LeftShift) && !input.isKeyDown(Key::RightShift)) {
-            return false;
-        }
-        if (binding.requireCtrl &&
-            !input.isKeyDown(Key::LeftControl) && !input.isKeyDown(Key::RightControl)) {
-            return false;
-        }
-        if (binding.requireAlt &&
-            !input.isKeyDown(Key::LeftAlt) && !input.isKeyDown(Key::RightAlt)) {
-            return false;
-        }
-        return true;
-    }
+    enum class BindingCheck { Pressed, Down, Released };
+
+    bool checkModifiers(const InputBinding& binding, const Input& input) const;
+
+    bool checkBinding(const InputBinding& binding, const Input& input,
+                      const Gamepad& gamepad, BindingCheck check) const;
+
+    float getBindingValue(const InputBinding& binding, const Input& input,
+                          const Gamepad& gamepad) const;
 
     std::unordered_map<std::string, std::vector<InputBinding>> m_actions;
+
+    // Previous-frame axis values for Pressed/Released edge detection
+    static constexpr int AXIS_COUNT = 6;
+    float m_prevAxisValues[AXIS_COUNT] = {};
 };
 
 } // namespace gloaming

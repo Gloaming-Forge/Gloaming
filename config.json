@@ -19,5 +19,12 @@
         "max_sounds": 32,
         "positional_range": 1000.0,
         "min_crossfade": 0.5
+    },
+    "input": {
+        "gamepad_enabled": true,
+        "gamepad_deadzone": 0.15,
+        "glyph_style": "xbox",
+        "rumble_enabled": true,
+        "rumble_intensity": 1.0
     }
 }
