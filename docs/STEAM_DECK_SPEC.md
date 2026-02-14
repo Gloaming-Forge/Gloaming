@@ -3,6 +3,7 @@
 **Engine:** Gloaming v0.5.0 → v0.6.0
 **Target:** Steam Deck Verified badge
 **Stage:** 19 — Steam Deck Support
+**Implementation Status:** Complete — all systems implemented and tested
 
 ---
 
@@ -24,14 +25,14 @@ This document specifies every engine component that must be added or modified to
 | **Audio** | Stereo speakers, 3.5mm jack, Bluetooth |
 | **Docked output** | Up to 4K@60Hz / 1080p@120Hz via USB-C DisplayPort 1.4 |
 
-### 1.2 Current Engine Gaps Summary
+### 1.2 Engine Gaps Summary (All Resolved)
 
-| Verified Category | Status | Gap |
-|-------------------|--------|-----|
-| **Input** | Not ready | No gamepad support at all. Keyboard/mouse only. No on-screen keyboard. No glyph system. |
-| **Display** | Partially ready | 1280×720 default (needs 1280×800). No aspect ratio handling. No UI scaling. No minimum font size enforcement. |
-| **Seamlessness** | Mostly ready | No launcher. But no Steam overlay integration, no suspend/resume handling. |
-| **System Support** | Partially ready | Raylib/OpenGL works on Linux. No Steamworks SDK. No native Linux build verification in CI. |
+| Verified Category | Status | Resolution |
+|-------------------|--------|------------|
+| **Input** | Done | Gamepad class, InputDeviceTracker, InputGlyphs, OnScreenKeyboard, Haptics, unified InputActionMap with gamepad bindings. |
+| **Display** | Done | ViewportScaler with multiple scale modes, UIScaling with minimum font size enforcement, 1280×800 support. |
+| **Seamlessness** | Done | Suspend/resume handling via focus detection, SIGTERM graceful exit, SeamlessnessLuaBindings. |
+| **System Support** | Done | Optional SteamIntegration, Linux CI build, native Raylib/OpenGL on SteamOS. |
 
 ---
 
