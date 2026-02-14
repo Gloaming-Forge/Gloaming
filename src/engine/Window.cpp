@@ -120,7 +120,7 @@ bool Window::isFocused() const {
     return IsWindowFocused();
 }
 
-bool Window::sizeChanged() {
+bool Window::pollSizeChanged() {
     int w = getWidth();
     int h = getHeight();
     if (w != m_lastWidth || h != m_lastHeight) {

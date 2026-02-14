@@ -12,6 +12,11 @@ public:
     /// Seconds elapsed since last frame (clamped).
     double deltaTime() const { return m_deltaTime; }
 
+    /// Raw (unclamped) delta from the last update.  Useful for detecting
+    /// OS-level suspend: a raw delta >> MAX_DELTA indicates the process
+    /// was frozen (e.g., Steam Deck sleep).
+    double rawDeltaTime() const { return m_rawDeltaTime; }
+
     /// Total seconds since Time was created.
     double elapsedTime() const { return m_elapsedTime; }
 
@@ -34,8 +39,9 @@ public:
     void clampNextDelta(double maxDelta);
 
 private:
-    double   m_deltaTime   = 0.0;
-    double   m_elapsedTime = 0.0;
+    double   m_deltaTime    = 0.0;
+    double   m_rawDeltaTime = 0.0;
+    double   m_elapsedTime  = 0.0;
     uint64_t m_frameCount  = 0;
     double   m_fps         = 0.0;
     int      m_targetFPS   = 0;

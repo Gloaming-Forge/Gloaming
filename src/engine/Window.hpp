@@ -47,7 +47,9 @@ public:
     bool isFocused() const;
 
     /// Check if the window size changed since the last call to this method.
-    bool sizeChanged();
+    /// Stateful: consumes the event, so a second call in the same frame
+    /// returns false.  Call exactly once per frame.
+    bool pollSizeChanged();
 
 private:
     bool m_initialized = false;

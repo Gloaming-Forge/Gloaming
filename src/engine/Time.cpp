@@ -6,6 +6,8 @@
 namespace gloaming {
 
 void Time::update(double rawDeltaTime) {
+    m_rawDeltaTime = rawDeltaTime;
+
     double clampLimit = MAX_DELTA;
 
     // Apply one-shot clamp if set (e.g., after suspend/resume)

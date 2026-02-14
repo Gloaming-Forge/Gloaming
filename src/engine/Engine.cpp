@@ -465,15 +465,33 @@ void Engine::processInput() {
     m_inputDeviceTracker.update(m_input, m_gamepad);
 
     // Update viewport scaler only when window size actually changes
-    if (m_window.sizeChanged()) {
+    if (m_window.pollSizeChanged()) {
         m_viewportScaler.update(m_window.getWidth(), m_window.getHeight());
         m_camera.setScreenSize(
             static_cast<float>(m_viewportScaler.getEffectiveWidth()),
             static_cast<float>(m_viewportScaler.getEffectiveHeight()));
     }
 
-    // Suspend/resume detection (Stage 19B — for Steam Deck sleep/wake)
-    // Uses a threshold to avoid pausing audio on brief focus losses (alt-tab, overlay popups).
+    // Suspend/resume detection (Stage 19B)
+    //
+    // Two independent signals:
+    //  1. OS-level suspend (Steam Deck sleep): the process is frozen by the OS,
+    //     so no frames tick.  On wake, a single frame arrives with a very large
+    //     raw delta (seconds/minutes).  We detect this via rawDeltaTime() and
+    //     immediately clamp the next delta + pause/unpause audio.
+    //  2. Desktop extended unfocus (alt-tab, overlay): the process keeps running
+    //     but the window loses focus.  We use a timer so brief focus losses
+    //     (< 1s) don't interrupt audio.
+    //
+    // Signal 1: large raw delta indicates OS-level suspend/resume
+    if (m_time.rawDeltaTime() > SUSPEND_THRESHOLD) {
+        // Process was frozen — clamp the next frame's delta to prevent
+        // physics explosions.  (The current frame's delta is already clamped
+        // by Time::MAX_DELTA, but chain a tighter clamp for safety.)
+        m_time.clampNextDelta(0.1);
+    }
+
+    // Signal 2: focus-based audio pause for extended unfocus
     if (!m_window.isFocused()) {
         m_unfocusedTimer += static_cast<float>(m_time.deltaTime());
         if (!m_wasSuspended && m_unfocusedTimer >= SUSPEND_THRESHOLD) {
@@ -487,7 +505,6 @@ void Engine::processInput() {
             if (m_audioSystem) {
                 m_audioSystem->setMusicPaused(false);
             }
-            m_time.clampNextDelta(0.1);  // Prevent physics explosion after long suspend
         }
         m_wasSuspended = false;
         m_unfocusedTimer = 0.0f;
