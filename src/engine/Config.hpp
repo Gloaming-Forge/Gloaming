@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <set>
 #include <nlohmann/json.hpp>
 
 namespace gloaming {
@@ -24,6 +25,12 @@ public:
     /// Returns false if the file cannot be written.
     bool saveToFile(const std::string& path) const;
 
+    /// Save only the keys that were modified at runtime (via setters)
+    /// to a JSON file.  This avoids dumping the entire merged config,
+    /// which would mask future base config changes.  Returns false if
+    /// the file cannot be written or no keys were modified.
+    bool saveOverridesToFile(const std::string& path) const;
+
     // --- Getters (read with dot-notation key paths) ---
 
     std::string getString(const std::string& key, const std::string& defaultVal = "") const;
@@ -41,6 +48,9 @@ public:
     /// Check if a key exists (supports dot-notation, e.g. "window.width").
     bool hasKey(const std::string& key) const;
 
+    /// Return the set of keys modified at runtime via setters.
+    const std::set<std::string>& dirtyKeys() const { return m_dirtyKeys; }
+
     const nlohmann::json& raw() const { return m_data; }
 
 private:
@@ -57,6 +67,7 @@ private:
     static void mergeJson(nlohmann::json& base, const nlohmann::json& overlay);
 
     nlohmann::json m_data;
+    std::set<std::string> m_dirtyKeys;  ///< Keys modified at runtime via setters
 };
 
 } // namespace gloaming

@@ -1,4 +1,5 @@
 #include "engine/Config.hpp"
+#include "engine/Log.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -41,7 +42,10 @@ bool Config::mergeFromFile(const std::string& path) {
         return false;
     }
 
-    mergeJson(m_data, overlay);
+    // Merge into a copy so that m_data is unchanged if mergeJson throws.
+    nlohmann::json merged = m_data;
+    mergeJson(merged, overlay);
+    m_data = std::move(merged);
     return true;
 }
 
@@ -52,6 +56,46 @@ bool Config::saveToFile(const std::string& path) const {
     }
 
     file << m_data.dump(4) << '\n';
+    return file.good();
+}
+
+bool Config::saveOverridesToFile(const std::string& path) const {
+    if (m_dirtyKeys.empty()) {
+        return false;
+    }
+
+    // Build a minimal JSON containing only the keys that were
+    // modified at runtime, preserving their nested structure.
+    nlohmann::json overrides = nlohmann::json::object();
+    for (const auto& key : m_dirtyKeys) {
+        const nlohmann::json* val = resolve(key);
+        if (!val) continue;
+
+        // Walk the dot-separated key path, creating intermediate objects
+        nlohmann::json* cur = &overrides;
+        std::istringstream stream(key);
+        std::string segment;
+        std::string prev;
+        bool first = true;
+
+        while (std::getline(stream, segment, '.')) {
+            if (!first) {
+                if (!cur->is_object()) *cur = nlohmann::json::object();
+                cur = &(*cur)[prev];
+            }
+            prev = segment;
+            first = false;
+        }
+        if (!cur->is_object()) *cur = nlohmann::json::object();
+        (*cur)[prev] = *val;
+    }
+
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    file << overrides.dump(4) << '\n';
     return file.good();
 }
 
@@ -87,7 +131,10 @@ nlohmann::json& Config::resolveOrCreate(const std::string& key) {
 
     // Walk through all but the last segment, creating objects as needed
     while (std::getline(stream, nextSegment, '.')) {
-        if (!current->is_object()) {
+        if (!current->is_object() && !current->is_null()) {
+            LOG_WARN("Config: overwriting non-object value at '{}' with object", segment);
+            *current = nlohmann::json::object();
+        } else if (!current->is_object()) {
             *current = nlohmann::json::object();
         }
         current = &(*current)[segment];
@@ -95,7 +142,10 @@ nlohmann::json& Config::resolveOrCreate(const std::string& key) {
     }
 
     // Final segment — create or return the leaf
-    if (!current->is_object()) {
+    if (!current->is_object() && !current->is_null()) {
+        LOG_WARN("Config: overwriting non-object value with object while setting key '{}'", segment);
+        *current = nlohmann::json::object();
+    } else if (!current->is_object()) {
         *current = nlohmann::json::object();
     }
     return (*current)[segment];
@@ -147,18 +197,22 @@ bool Config::getBool(const std::string& key, bool defaultVal) const {
 
 void Config::setString(const std::string& key, const std::string& value) {
     resolveOrCreate(key) = value;
+    m_dirtyKeys.insert(key);
 }
 
 void Config::setInt(const std::string& key, int value) {
     resolveOrCreate(key) = value;
+    m_dirtyKeys.insert(key);
 }
 
 void Config::setFloat(const std::string& key, float value) {
     resolveOrCreate(key) = value;
+    m_dirtyKeys.insert(key);
 }
 
 void Config::setBool(const std::string& key, bool value) {
     resolveOrCreate(key) = value;
+    m_dirtyKeys.insert(key);
 }
 
 // ---------------------------------------------------------------------------

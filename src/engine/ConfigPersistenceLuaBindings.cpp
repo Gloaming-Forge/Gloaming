@@ -55,13 +55,15 @@ void bindConfigPersistenceAPI(sol::state& lua, Engine& engine) {
     };
 
     // config.save_local() -> bool
-    // Persists the current config to config.local.json for device-specific settings.
+    // Persists only the keys modified at runtime to the per-device local
+    // config file, avoiding masking of future base config changes.
     configApi["save_local"] = [&engine]() -> bool {
-        bool ok = engine.getConfig().saveToFile("config.local.json");
+        const std::string& path = engine.getLocalConfigPath();
+        bool ok = engine.getConfig().saveOverridesToFile(path);
         if (ok) {
-            LOG_INFO("Local config saved to config.local.json");
+            LOG_INFO("Local config overrides saved to '{}'", path);
         } else {
-            LOG_WARN("Failed to save local config to config.local.json");
+            LOG_WARN("Failed to save local config to '{}' (no overrides or write error)", path);
         }
         return ok;
     };

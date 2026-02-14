@@ -20,6 +20,7 @@
 #include <raylib.h>
 #include <cstdlib>
 #include <csignal>
+#include <filesystem>
 
 namespace gloaming {
 
@@ -62,17 +63,15 @@ bool Engine::init(const std::string& configPath) {
     // config.local.json is device-specific (gitignored, not synced via Steam Cloud)
     // and overrides display/input settings for the current hardware.
     {
-        std::string localPath = configPath;
         // Derive local config path: "config.json" -> "config.local.json"
-        auto dotPos = localPath.rfind('.');
-        if (dotPos != std::string::npos) {
-            localPath.insert(dotPos, ".local");
-        } else {
-            localPath += ".local";
-        }
+        namespace fs = std::filesystem;
+        fs::path base(configPath);
+        fs::path localFile = base.parent_path()
+            / (base.stem().string() + ".local" + base.extension().string());
+        m_localConfigPath = localFile.string();
 
-        if (m_config.mergeFromFile(localPath)) {
-            LOG_INFO("Per-device config merged from '{}'", localPath);
+        if (m_config.mergeFromFile(m_localConfigPath)) {
+            LOG_INFO("Per-device config merged from '{}'", m_localConfigPath);
         }
     }
 

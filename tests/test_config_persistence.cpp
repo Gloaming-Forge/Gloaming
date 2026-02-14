@@ -236,6 +236,102 @@ TEST(ConfigPersistenceTest, SetSaveMergeRoundTrip) {
 }
 
 // =============================================================================
+// saveOverridesToFile — only saves dirty keys
+// =============================================================================
+
+TEST(ConfigPersistenceTest, SaveOverridesOnlyWritesDirtyKeys) {
+    const std::string overridesPath = "test_config_overrides_tmp.json";
+
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({
+        "window": {"width": 1280, "height": 720, "title": "Gloaming"},
+        "audio": {"volume": 0.7}
+    })"));
+
+    // Only modify height and fullscreen
+    cfg.setInt("window.height", 800);
+    cfg.setBool("window.fullscreen", true);
+
+    ASSERT_TRUE(cfg.saveOverridesToFile(overridesPath));
+
+    // Reload the overrides file — it should only contain the dirty keys
+    Config overrides;
+    ASSERT_TRUE(overrides.loadFromFile(overridesPath));
+    EXPECT_EQ(overrides.getInt("window.height"), 800);
+    EXPECT_TRUE(overrides.getBool("window.fullscreen"));
+
+    // Keys that were NOT modified should NOT be in the overrides file
+    EXPECT_FALSE(overrides.hasKey("window.width"));
+    EXPECT_FALSE(overrides.hasKey("window.title"));
+    EXPECT_FALSE(overrides.hasKey("audio.volume"));
+
+    std::remove(overridesPath.c_str());
+}
+
+TEST(ConfigPersistenceTest, SaveOverridesFailsWhenNoDirtyKeys) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"key": "value"})"));
+
+    // No setters called — no dirty keys
+    EXPECT_TRUE(cfg.dirtyKeys().empty());
+    EXPECT_FALSE(cfg.saveOverridesToFile("should_not_be_created.json"));
+}
+
+TEST(ConfigPersistenceTest, SaveOverridesMergeRoundTrip) {
+    const std::string overridesPath = "test_config_overrides_rt_tmp.json";
+
+    // Simulate runtime: load base, modify some keys, save overrides only
+    Config runtime;
+    ASSERT_TRUE(runtime.loadFromString(R"({
+        "window": {"width": 1280, "height": 720, "title": "Gloaming"},
+        "input": {"glyph_style": "auto", "gamepad_deadzone": 0.15}
+    })"));
+    runtime.setInt("window.height", 800);
+    runtime.setString("input.glyph_style", "xbox");
+    ASSERT_TRUE(runtime.saveOverridesToFile(overridesPath));
+
+    // Simulate next startup: load fresh base, merge overrides
+    Config fresh;
+    ASSERT_TRUE(fresh.loadFromString(R"({
+        "window": {"width": 1280, "height": 720, "title": "Gloaming"},
+        "input": {"glyph_style": "auto", "gamepad_deadzone": 0.15},
+        "new_key": "from_update"
+    })"));
+    ASSERT_TRUE(fresh.mergeFromFile(overridesPath));
+
+    // Overrides applied
+    EXPECT_EQ(fresh.getInt("window.height"), 800);
+    EXPECT_EQ(fresh.getString("input.glyph_style"), "xbox");
+    // Base keys preserved (not masked by full dump)
+    EXPECT_EQ(fresh.getInt("window.width"), 1280);
+    EXPECT_EQ(fresh.getString("window.title"), "Gloaming");
+    EXPECT_NEAR(fresh.getFloat("input.gamepad_deadzone"), 0.15f, 0.001f);
+    // New keys from base config update are visible (not masked)
+    EXPECT_EQ(fresh.getString("new_key"), "from_update");
+
+    std::remove(overridesPath.c_str());
+}
+
+TEST(ConfigPersistenceTest, DirtyKeysTracked) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+
+    EXPECT_TRUE(cfg.dirtyKeys().empty());
+
+    cfg.setString("a.b", "val");
+    cfg.setInt("x.y", 42);
+    cfg.setBool("flag", true);
+    cfg.setFloat("ratio", 1.5f);
+
+    const auto& dirty = cfg.dirtyKeys();
+    EXPECT_EQ(dirty.size(), 4u);
+    EXPECT_TRUE(dirty.count("a.b"));
+    EXPECT_TRUE(dirty.count("x.y"));
+    EXPECT_TRUE(dirty.count("flag"));
+    EXPECT_TRUE(dirty.count("ratio"));
+}
+
+// =============================================================================
 // Platform-aware defaults — auto glyph style
 // =============================================================================
 
