@@ -179,6 +179,8 @@ add_library(gloaming_engine STATIC
     # System Support — Steam Deck Support (Stage 19D)
     src/engine/SteamIntegration.cpp
     src/engine/SystemSupportLuaBindings.cpp
+    # Configuration & Persistence — Steam Deck Support (Stage 19E)
+    src/engine/ConfigPersistenceLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC

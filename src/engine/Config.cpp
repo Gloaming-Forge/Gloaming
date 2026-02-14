@@ -28,6 +28,37 @@ bool Config::loadFromString(const std::string& jsonStr) {
     return true;
 }
 
+bool Config::mergeFromFile(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    nlohmann::json overlay;
+    try {
+        overlay = nlohmann::json::parse(file);
+    } catch (const nlohmann::json::parse_error&) {
+        return false;
+    }
+
+    mergeJson(m_data, overlay);
+    return true;
+}
+
+bool Config::saveToFile(const std::string& path) const {
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    file << m_data.dump(4) << '\n';
+    return file.good();
+}
+
+// ---------------------------------------------------------------------------
+// Key resolution
+// ---------------------------------------------------------------------------
+
 const nlohmann::json* Config::resolve(const std::string& key) const {
     const nlohmann::json* current = &m_data;
     std::istringstream stream(key);
@@ -41,6 +72,38 @@ const nlohmann::json* Config::resolve(const std::string& key) const {
     }
     return current;
 }
+
+nlohmann::json& Config::resolveOrCreate(const std::string& key) {
+    nlohmann::json* current = &m_data;
+    std::istringstream stream(key);
+    std::string segment;
+    std::string nextSegment;
+
+    // Read the first segment
+    if (!std::getline(stream, segment, '.')) {
+        // Empty key — return (and potentially create) a root "" key.
+        return (*current)[""];
+    }
+
+    // Walk through all but the last segment, creating objects as needed
+    while (std::getline(stream, nextSegment, '.')) {
+        if (!current->is_object()) {
+            *current = nlohmann::json::object();
+        }
+        current = &(*current)[segment];
+        segment = nextSegment;
+    }
+
+    // Final segment — create or return the leaf
+    if (!current->is_object()) {
+        *current = nlohmann::json::object();
+    }
+    return (*current)[segment];
+}
+
+// ---------------------------------------------------------------------------
+// Getters
+// ---------------------------------------------------------------------------
 
 bool Config::hasKey(const std::string& key) const {
     return resolve(key) != nullptr;
@@ -76,6 +139,47 @@ bool Config::getBool(const std::string& key, bool defaultVal) const {
         return val->get<bool>();
     }
     return defaultVal;
+}
+
+// ---------------------------------------------------------------------------
+// Setters
+// ---------------------------------------------------------------------------
+
+void Config::setString(const std::string& key, const std::string& value) {
+    resolveOrCreate(key) = value;
+}
+
+void Config::setInt(const std::string& key, int value) {
+    resolveOrCreate(key) = value;
+}
+
+void Config::setFloat(const std::string& key, float value) {
+    resolveOrCreate(key) = value;
+}
+
+void Config::setBool(const std::string& key, bool value) {
+    resolveOrCreate(key) = value;
+}
+
+// ---------------------------------------------------------------------------
+// JSON merge
+// ---------------------------------------------------------------------------
+
+void Config::mergeJson(nlohmann::json& base, const nlohmann::json& overlay) {
+    if (!overlay.is_object()) {
+        base = overlay;
+        return;
+    }
+    if (!base.is_object()) {
+        base = nlohmann::json::object();
+    }
+    for (auto it = overlay.begin(); it != overlay.end(); ++it) {
+        if (it->is_object() && base.contains(it.key()) && base[it.key()].is_object()) {
+            mergeJson(base[it.key()], *it);
+        } else {
+            base[it.key()] = *it;
+        }
+    }
 }
 
 } // namespace gloaming
