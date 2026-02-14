@@ -1,6 +1,7 @@
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
 #include "engine/PolishLuaBindings.hpp"
+#include "engine/SeamlessnessLuaBindings.hpp"
 #include "rendering/RaylibRenderer.hpp"
 #include "ecs/CoreSystems.hpp"
 #include "gameplay/Gameplay.hpp"
@@ -16,6 +17,7 @@
 
 #include <raylib.h>
 #include <cstdlib>
+#include <csignal>
 
 namespace gloaming {
 
@@ -25,6 +27,20 @@ namespace {
         return val != nullptr && std::string(val) == "1";
     }
 } // anonymous namespace
+
+// Stage 19C: Seamlessness — signal handling
+std::atomic<bool> Engine::s_signalReceived{false};
+
+void Engine::signalHandler(int signum) {
+    // Signal-safe: only set an atomic flag. Logging and cleanup
+    // happen in the main loop when it checks this flag.
+    (void)signum;
+    s_signalReceived.store(true, std::memory_order_relaxed);
+}
+
+void Engine::requestShutdown() {
+    m_running = false;
+}
 
 bool Engine::init(const std::string& configPath) {
     // Load configuration
@@ -328,7 +344,12 @@ bool Engine::init(const std::string& configPath) {
             m_modLoader.getLuaBindings().getState(),
             *this, m_profiler, m_resourceManager, m_diagnosticOverlay);
 
-        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, scene/timer/save, particle/tween/debug, and profiler/resource/diagnostics Lua APIs registered");
+        // Register Seamlessness Lua APIs (Stage 19C)
+        bindSeamlessnessAPI(
+            m_modLoader.getLuaBindings().getState(), *this);
+
+        LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, scene/timer/save, "
+                 "particle/tween/debug, profiler/resource/diagnostics, and seamlessness Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -426,8 +447,15 @@ bool Engine::init(const std::string& configPath) {
         }
     }
 
+    // Stage 19C: Seamlessness — install signal handlers for graceful exit
+    {
+        std::signal(SIGTERM, Engine::signalHandler);
+        std::signal(SIGINT, Engine::signalHandler);
+        LOG_INFO("Signal handlers installed (SIGTERM, SIGINT)");
+    }
+
     m_running = true;
-    LOG_INFO("Engine initialized successfully — Stage 19B: Display System");
+    LOG_INFO("Engine initialized successfully — Stage 19C: Seamlessness");
     return true;
 }
 
@@ -435,6 +463,18 @@ void Engine::run() {
     LOG_INFO("Entering main loop");
 
     while (m_running && !m_window.shouldClose()) {
+        // Stage 19C: Check for OS termination signals (SIGTERM/SIGINT)
+        if (s_signalReceived.load(std::memory_order_relaxed)) {
+            LOG_INFO("Termination signal received — initiating graceful shutdown");
+            getEventBus().emit("engine.shutdown");
+            if (m_saveSystem.isDirty()) {
+                LOG_INFO("Auto-saving before signal exit...");
+                m_saveSystem.saveAll();
+            }
+            m_running = false;
+            break;
+        }
+
         m_profiler.beginFrame();
 
         double dt = static_cast<double>(GetFrameTime());
@@ -472,7 +512,7 @@ void Engine::processInput() {
             static_cast<float>(m_viewportScaler.getEffectiveHeight()));
     }
 
-    // Suspend/resume detection (Stage 19B)
+    // Suspend/resume detection (Stage 19C: Seamlessness)
     //
     // Two independent signals:
     //  1. OS-level suspend (Steam Deck sleep): the process is frozen by the OS,
@@ -491,20 +531,43 @@ void Engine::processInput() {
         m_time.clampNextDelta(0.1);
     }
 
-    // Signal 2: focus-based audio pause for extended unfocus
+    // Signal 2: focus-based suspend for extended unfocus
     if (!m_window.isFocused()) {
         m_unfocusedTimer += static_cast<float>(m_time.deltaTime());
         if (!m_wasSuspended && m_unfocusedTimer >= SUSPEND_THRESHOLD) {
+            // --- Enter suspended state ---
             if (m_audioSystem) {
                 m_audioSystem->setMusicPaused(true);
+                m_audioSystem->stopAllSounds();
             }
+            m_haptics.stop();
+
+            // Auto-save on suspend so data survives if the process is killed
+            if (m_saveSystem.isDirty()) {
+                LOG_INFO("Auto-saving on suspend...");
+                m_saveSystem.saveAll();
+            }
+
+            // Notify mods via EventBus
+            EventData suspendData;
+            suspendData.setString("reason", "focus_lost");
+            getEventBus().emit("engine.suspend", suspendData);
+
+            LOG_INFO("Engine suspended (focus lost)");
             m_wasSuspended = true;
         }
     } else {
         if (m_wasSuspended) {
+            // --- Resume from suspended state ---
             if (m_audioSystem) {
                 m_audioSystem->setMusicPaused(false);
             }
+            m_time.clampNextDelta(0.1);
+
+            // Notify mods via EventBus
+            getEventBus().emit("engine.resume");
+
+            LOG_INFO("Engine resumed");
         }
         m_wasSuspended = false;
         m_unfocusedTimer = 0.0f;
@@ -693,7 +756,7 @@ void Engine::render() {
     } else {
         // Default HUD (when diagnostics overlay is off)
         char bannerBuf[128];
-        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19B: Display System", kEngineVersion);
+        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19C: Seamlessness", kEngineVersion);
         m_renderer->drawText(bannerBuf, {20, 20}, 20, Color::White());
 
         char fpsText[64];
@@ -868,6 +931,13 @@ void Engine::render() {
 
 void Engine::shutdown() {
     LOG_INFO("Shutting down...");
+
+    // Stage 19C: Notify mods of impending shutdown
+    getEventBus().emit("engine.shutdown");
+
+    // Restore default signal handlers
+    std::signal(SIGTERM, SIG_DFL);
+    std::signal(SIGINT, SIG_DFL);
 
     // Shutdown mods first (they may reference engine resources)
     m_modLoader.shutdown();

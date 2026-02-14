@@ -172,6 +172,8 @@ add_library(gloaming_engine STATIC
     # Display System — Steam Deck Support (Stage 19B)
     src/rendering/ViewportScaler.cpp
     src/ui/UIScaling.cpp
+    # Seamlessness — Steam Deck Support (Stage 19C)
+    src/engine/SeamlessnessLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC
