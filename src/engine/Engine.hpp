@@ -53,6 +53,7 @@
 
 #include <string>
 #include <memory>
+#include <atomic>
 
 namespace gloaming {
 
@@ -64,6 +65,14 @@ public:
     bool init(const std::string& configPath = "config.json");
     void run();
     void shutdown();
+
+    /// Request a graceful shutdown (used by SIGTERM handler and Lua API).
+    /// Sets m_running to false so the main loop exits cleanly.
+    void requestShutdown();
+
+    /// Check whether the engine is currently in a suspended state
+    /// (extended focus loss or OS-level suspend detected).
+    bool isSuspended() const { return m_wasSuspended; }
 
     Config& getConfig() { return m_config; }
     Window& getWindow() { return m_window; }
@@ -251,6 +260,12 @@ private:
     static constexpr float SUSPEND_THRESHOLD = 1.0f;  // Seconds unfocused before treating as suspend
 
     bool m_running = false;
+
+    // Stage 19C: Seamlessness — signal handling
+    static std::atomic<bool> s_signalReceived;
+    static void signalHandler(int signum);
+    bool m_shutdownEmitted = false;  // Guards against duplicate engine.shutdown events
+    void emitShutdownOnce();         // Emit engine.shutdown at most once per lifecycle
 };
 
 } // namespace gloaming

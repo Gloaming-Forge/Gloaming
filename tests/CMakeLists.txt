@@ -33,6 +33,7 @@ add_executable(gloaming_tests
     test_polish.cpp
     test_input_system.cpp
     test_display_system.cpp
+    test_seamlessness.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE
