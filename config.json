@@ -4,6 +4,7 @@
         "height": 720,
         "title": "Gloaming",
         "fullscreen": false,
+        "fullscreen_mode": "borderless",
         "vsync": true
     },
     "logging": {
@@ -26,5 +27,15 @@
         "glyph_style": "xbox",
         "rumble_enabled": true,
         "rumble_intensity": 1.0
+    },
+    "display": {
+        "design_width": 1280,
+        "design_height": 720,
+        "scale_mode": "expand",
+        "ui_scale": 1.0,
+        "min_font_size": 12
+    },
+    "performance": {
+        "target_fps": 0
     }
 }
