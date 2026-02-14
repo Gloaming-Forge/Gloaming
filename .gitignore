@@ -36,3 +36,6 @@ config.local.json
 
 # Dependencies (fetched by CMake)
 _deps/
+
+# User mods (not engine content — examples/ is for reference mods)
+mods/
