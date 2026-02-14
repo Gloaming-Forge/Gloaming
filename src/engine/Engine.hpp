@@ -50,6 +50,7 @@
 #include "ui/OnScreenKeyboard.hpp"
 #include "rendering/ViewportScaler.hpp"
 #include "ui/UIScaling.hpp"
+#include "engine/SteamIntegration.hpp"
 
 #include <string>
 #include <memory>
@@ -168,6 +169,10 @@ public:
     UIScaling& getUIScaling() { return m_uiScaling; }
     const UIScaling& getUIScaling() const { return m_uiScaling; }
 
+    // Steam Integration (Stage 19D)
+    SteamIntegration& getSteamIntegration() { return m_steamIntegration; }
+    const SteamIntegration& getSteamIntegration() const { return m_steamIntegration; }
+
 private:
     void processInput();
     void update(double dt);
@@ -255,6 +260,10 @@ private:
     // Display System (Stage 19B)
     ViewportScaler m_viewportScaler;
     UIScaling m_uiScaling;
+
+    // Steam Integration (Stage 19D)
+    SteamIntegration m_steamIntegration;
+
     bool m_wasSuspended = false;
     float m_unfocusedTimer = 0.0f;
     static constexpr float SUSPEND_THRESHOLD = 1.0f;  // Seconds unfocused before treating as suspend

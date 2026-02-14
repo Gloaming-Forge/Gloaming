@@ -7,6 +7,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Options
 option(GLOAMING_BUILD_TESTS "Build unit tests" ON)
+option(GLOAMING_STEAM "Enable Steamworks SDK integration" OFF)
+set(STEAMWORKS_SDK_DIR "" CACHE PATH "Path to Steamworks SDK")
 
 # --------------------------------------------------------------------------
 # Dependencies via FetchContent
@@ -174,6 +176,9 @@ add_library(gloaming_engine STATIC
     src/ui/UIScaling.cpp
     # Seamlessness — Steam Deck Support (Stage 19C)
     src/engine/SeamlessnessLuaBindings.cpp
+    # System Support — Steam Deck Support (Stage 19D)
+    src/engine/SteamIntegration.cpp
+    src/engine/SystemSupportLuaBindings.cpp
 )
 
 target_include_directories(gloaming_engine PUBLIC
@@ -188,6 +193,47 @@ target_link_libraries(gloaming_engine PUBLIC
     sol2
     lua_static
 )
+
+# --------------------------------------------------------------------------
+# Optional Steamworks SDK (Stage 19D)
+# --------------------------------------------------------------------------
+if(GLOAMING_STEAM)
+    if(STEAMWORKS_SDK_DIR AND EXISTS "${STEAMWORKS_SDK_DIR}")
+        target_compile_definitions(gloaming_engine PUBLIC GLOAMING_STEAM)
+        target_include_directories(gloaming_engine PUBLIC
+            "${STEAMWORKS_SDK_DIR}/public"
+        )
+        if(WIN32)
+            if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+                set(_STEAM_LIB_DIR "${STEAMWORKS_SDK_DIR}/redistributable_bin/win64")
+                set(_STEAM_LIB_NAME "steam_api64")
+            else()
+                set(_STEAM_LIB_DIR "${STEAMWORKS_SDK_DIR}/redistributable_bin")
+                set(_STEAM_LIB_NAME "steam_api")
+            endif()
+        elseif(UNIX)
+            if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+                set(_STEAM_LIB_DIR "${STEAMWORKS_SDK_DIR}/redistributable_bin/linux64")
+            else()
+                set(_STEAM_LIB_DIR "${STEAMWORKS_SDK_DIR}/redistributable_bin/linux32")
+            endif()
+            set(_STEAM_LIB_NAME "steam_api")
+        endif()
+        find_library(STEAM_API_LIBRARY
+            NAMES ${_STEAM_LIB_NAME}
+            PATHS "${_STEAM_LIB_DIR}"
+            NO_DEFAULT_PATH
+        )
+        if(STEAM_API_LIBRARY)
+            target_link_libraries(gloaming_engine PUBLIC ${STEAM_API_LIBRARY})
+            message(STATUS "Steamworks SDK linked: ${STEAM_API_LIBRARY}")
+        else()
+            message(WARNING "GLOAMING_STEAM is ON but steam_api library not found in ${_STEAM_LIB_DIR}")
+        endif()
+    else()
+        message(WARNING "GLOAMING_STEAM is ON but STEAMWORKS_SDK_DIR is not set or does not exist")
+    endif()
+endif()
 
 # --------------------------------------------------------------------------
 # Main executable
