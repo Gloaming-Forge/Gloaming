@@ -450,12 +450,119 @@ The engine's `ViewportScaler` handles resolution differences. The `InputGlyphs` 
 
 ---
 
-## 11. File Structure
+## 11. Development Workflow
+
+### 11.1 Building and Running
+
+The engine must be built before running the example. From the repository root:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+```
+
+Once the engine is built, use the provided run scripts to symlink the example into the
+engine's `mods/` directory and launch:
+
+```bash
+# Linux / macOS
+./examples/simple-platformer/run.sh
+
+# Windows (Command Prompt or PowerShell)
+examples\simple-platformer\run.bat
+```
+
+The scripts are idempotent — safe to run repeatedly. They create a symbolic link from
+`mods/simple-platformer` to `examples/simple-platformer` so the engine discovers the mod
+without copying files. Edits to scripts and assets take effect on the next engine launch
+(or on hot-reload once that feature is integrated).
+
+### 11.2 Debugging
+
+**Log output** is the primary debugging tool. The engine uses dual loggers:
+
+| Logger tag | Source | Example |
+|------------|--------|---------|
+| `[ENGINE]` | C++ engine code | `[ENGINE] [error] Failed to load texture: path/missing.png` |
+| `[MOD]` | Lua mod scripts | `[MOD] [error] [simple-platformer] init() error: scripts/player.lua:42: attempt to index nil value` |
+
+Logs go to both **stdout** (colored) and **gloaming.log** (timestamped). Use `log.*`
+calls liberally during development:
+
+```lua
+log.info("Player spawned at " .. x .. ", " .. y)
+log.debug("Coin count: " .. coins)
+log.warn("Enemy fell off level at y=" .. ey)
+```
+
+**F2 diagnostic overlay** cycles through three modes:
+
+| Mode | Shows |
+|------|-------|
+| Off | Nothing |
+| Minimal | FPS, frame time, budget bar (green/yellow/red) |
+| Full | Profiler zones, frame graph, entity counts, system stats |
+
+Use Minimal to spot frame drops. Use Full to see which system is expensive (physics,
+rendering, AI, etc.) and to verify entity counts match expectations.
+
+### 11.3 Is It a Mod Bug or an Engine Bug?
+
+| Symptom | Likely source | What to check |
+|---------|---------------|---------------|
+| Log says `[MOD] [error]` with a `.lua` file and line number | **Mod** | Read the Lua error message — it includes the script path and line |
+| Log says `[ENGINE] [error]` | **Engine** | File an engine issue with the log output |
+| Engine crashes (segfault, abort) | **Engine** | Mod errors are caught by sol2 and never crash the engine |
+| Infinite hang, then `instruction limit exceeded` | **Mod** | You have a `while true` loop or unbounded recursion in Lua |
+| Wrong physics / collision behavior | **Either** | Add `log.debug` around the suspicious logic. If the Lua values are correct but behavior is wrong, it's engine. If the values are wrong, it's mod. |
+| Texture missing or white square | **Mod (usually)** | Check that the asset path in your Lua/JSON matches the actual file path — paths are relative to the mod root |
+
+The engine wraps every Lua call (init, postInit, event handlers) in sol2 protected
+functions. A Lua error will never crash the engine — it logs the error, marks the mod as
+`Failed`, and continues. If the engine itself crashes, that's always an engine bug.
+
+### 11.4 Testing
+
+**Automated Lua tests are not needed for this example.** The engine has C++ unit tests
+(GoogleTest) that validate the mod system, content registry, and Lua bindings:
+
+```bash
+cmake --build build --target gloaming_tests && ctest --test-dir build
+```
+
+If those pass, the engine contract is solid. Gameplay correctness (does the player bounce
+when stomping an enemy?) is validated through manual playtesting, which the run scripts
+make fast to iterate on.
+
+For future mods that need automated Lua tests, the engine would need a headless mode
+(no window). That's an engine feature request, not something to hack into a mod.
+
+### 11.5 Iteration Cycle
+
+The fastest development loop:
+
+1. Edit a `.lua` script or `.json` content file
+2. Re-run `./examples/simple-platformer/run.sh` (or `run.bat`)
+3. Check the console output for `[MOD] [error]` lines
+4. Press **F2** in-game to verify entity counts and frame budget
+5. Repeat
+
+No rebuild is needed for Lua/JSON/asset changes — only the engine binary requires
+`cmake --build`. The symlink means your edits are live in the `mods/` directory
+immediately.
+
+---
+
+## 12. File Structure
+
+> The run scripts (`run.sh`, `run.bat`) live at the mod root alongside `mod.json`.
 
 ```
 examples/simple-platformer/
 ├── DESIGN.md                    # This document
 ├── mod.json                     # Mod manifest
+├── run.sh                       # Linux/macOS: symlink into mods/ and launch engine
+├── run.bat                      # Windows: same as run.sh
 ├── scripts/
 │   ├── init.lua                 # Entry point — config, content loading, event wiring
 │   ├── player.lua               # Player spawning, movement, animation state machine
@@ -490,7 +597,7 @@ examples/simple-platformer/
 
 ---
 
-## 12. Scope Boundaries
+## 13. Scope Boundaries
 
 Things this example deliberately does **not** include, and why:
 
@@ -509,7 +616,7 @@ Each excluded feature is an engine capability that a more complex mod could use.
 
 ---
 
-## 13. Implementation Order
+## 14. Implementation Order
 
 Suggested build order, where each step produces a testable result:
 
@@ -529,7 +636,7 @@ Suggested build order, where each step produces a testable result:
 
 ---
 
-## 14. Tutorial Guide Outline
+## 15. Tutorial Guide Outline
 
 The accompanying tutorial (to be written after implementation) will follow the implementation order above. Each chapter corresponds to one step:
 
