@@ -42,6 +42,13 @@ void Engine::requestShutdown() {
     m_running = false;
 }
 
+void Engine::emitShutdownOnce() {
+    if (!m_shutdownEmitted) {
+        m_shutdownEmitted = true;
+        getEventBus().emit("engine.shutdown");
+    }
+}
+
 bool Engine::init(const std::string& configPath) {
     // Load configuration
     if (!m_config.loadFromFile(configPath)) {
@@ -466,7 +473,7 @@ void Engine::run() {
         // Stage 19C: Check for OS termination signals (SIGTERM/SIGINT)
         if (s_signalReceived.load(std::memory_order_relaxed)) {
             LOG_INFO("Termination signal received — initiating graceful shutdown");
-            getEventBus().emit("engine.shutdown");
+            emitShutdownOnce();
             if (m_saveSystem.isDirty()) {
                 LOG_INFO("Auto-saving before signal exit...");
                 m_saveSystem.saveAll();
@@ -932,8 +939,9 @@ void Engine::render() {
 void Engine::shutdown() {
     LOG_INFO("Shutting down...");
 
-    // Stage 19C: Notify mods of impending shutdown
-    getEventBus().emit("engine.shutdown");
+    // Stage 19C: Notify mods of impending shutdown (guarded against double emit
+    // if the signal-exit path in run() already fired the event)
+    emitShutdownOnce();
 
     // Restore default signal handlers
     std::signal(SIGTERM, SIG_DFL);

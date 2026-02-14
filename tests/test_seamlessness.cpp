@@ -200,6 +200,34 @@ TEST(GracefulExitTest, ShutdownEventData) {
     EXPECT_TRUE(received);
 }
 
+TEST(GracefulExitTest, ShutdownEmitOnceGuard) {
+    // Simulate the emitShutdownOnce() pattern: the event should fire exactly
+    // once even if the guard function is called multiple times (e.g., once
+    // from the signal-exit path and once from shutdown()).
+    EventBus bus;
+    int callCount = 0;
+    bool emitted = false;
+
+    bus.on("engine.shutdown", [&](const EventData&) -> bool {
+        ++callCount;
+        return false;
+    });
+
+    // Mimic emitShutdownOnce() — first call emits
+    auto emitOnce = [&]() {
+        if (!emitted) {
+            emitted = true;
+            bus.emit("engine.shutdown");
+        }
+    };
+
+    emitOnce();  // Signal-exit path
+    emitOnce();  // shutdown() path
+    emitOnce();  // Extra call for good measure
+
+    EXPECT_EQ(callCount, 1);  // Only fired once
+}
+
 // =============================================================================
 // Platform Warning Suppression (§4.1) — EventData for Suspend Reason
 // =============================================================================

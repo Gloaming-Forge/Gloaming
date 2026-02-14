@@ -264,6 +264,8 @@ private:
     // Stage 19C: Seamlessness — signal handling
     static std::atomic<bool> s_signalReceived;
     static void signalHandler(int signum);
+    bool m_shutdownEmitted = false;  // Guards against duplicate engine.shutdown events
+    void emitShutdownOnce();         // Emit engine.shutdown at most once per lifecycle
 };
 
 } // namespace gloaming
