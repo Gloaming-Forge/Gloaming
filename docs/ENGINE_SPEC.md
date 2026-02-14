@@ -1,5 +1,5 @@
 # Gloaming Engine Specification
-### Version 0.4 — Multi-Genre 2D Game Engine
+### Version 1.0 — Multi-Genre 2D Game Engine
 
 > **Vision Statement:** An open-source, moddable 2D game engine. We build the platform — the community builds the games.
 
@@ -1318,46 +1318,49 @@ Flexbox layout, widgets (box/text/image/button/slider/grid/scroll), screen manag
 ### Stage 9: Gameplay Systems ✓
 GameMode/PhysicsPresets, GridMovement, CameraController, InputActions, Pathfinding, StateMachine, DialogueSystem, TileLayers. Full Lua bindings for all gameplay APIs.
 
-### Stage 10: Sprite Animation & Collision Layers
+### Stage 10: Sprite Animation & Collision Layers ✓
 The two most critical gaps before any game feels playable.
 
 - **Sprite Animation System** (§5.9) — AnimationController component, frame-based playback, named clips with loop/once/ping-pong modes, animation events (callbacks on specific frames), direction-aware animation selection, sprite sheet atlas integration.
 - **Collision Layers & Masks** (§5.10) — 16-bit layer/mask bitmasks on every collidable entity, named layer constants, runtime toggling for invincibility frames, Lua API for `collision.set_layer()`, `collision.set_mask()`, `collision.remove_mask()`, `collision.add_mask()`.
 
-### Stage 11: Entity Spawning & Projectiles
+### Stage 11: Entity Spawning & Projectiles ✓
 Enable dynamic entity creation — the prerequisite for enemies, items, and projectiles.
 
 - **Entity Spawning from Lua** (§5.11) — `entity.create()`, `entity.spawn(type, x, y)`, `entity.destroy(id)`, component access from Lua, spatial queries (`entity.find_in_radius()`).
 - **Projectile System** (§5.12) — Projectile component with speed, damage, lifetime, pierce, gravity toggle. Collision filtering via layers. Auto-rotation, on-hit callbacks, auto-despawn. Covers arrows, bullets, bombs, and magic bolts.
 
-### Stage 12: World Generation
+### Stage 12: World Generation ✓
 WorldGen API, terrain generators, biome system, cave generation, ore distribution, structure placement. Lua-driven so mods define their own world generators.
 
-### Stage 13: Gameplay Loop
+### Stage 13: Gameplay Loop ✓
 Inventory system, item pickup/drop, tool use (mining, chopping), weapon system (melee swing, ranged aim), crafting with station proximity, health/damage/death/respawn.
 
-### Stage 14: Enemies & AI
+### Stage 14: Enemies & AI ✓
 Enemy spawning rules (biome, depth, day/night), AI behavior API integrated with pathfinding and FSM, loot drops on death, despawn rules.
 
-### Stage 15: NPCs
+### Stage 15: NPCs ✓
 NPC entities, housing validation, dialogue integration with FSM, shops and trade.
 
-### Stage 16: Scenes, Timers & Save State
+### Stage 16: Scenes, Timers & Save State ✓
 Systems that enable complete game loops.
 
 - **Scene / Level Management** (§5.13) — Named scenes with tile data, entity spawns, transitions (fade, slide), scene stack for overlays, persistent vs scene-local entities.
 - **Timer / Scheduler** (§5.15) — `timer.after()`, `timer.every()`, `timer.cancel()`, entity-scoped timers, pause-aware.
 - **Save / Load for Gameplay State** (§5.16) — Key-value persistence per mod, auto-save with world file, string/number/boolean/table support.
 
-### Stage 17: Particles & Polish
+### Stage 17: Particles & Polish ✓
 Visual effects and developer quality-of-life.
 
 - **Particle System** (§5.14) — Data-driven emitters, burst and continuous modes, configurable lifetime/speed/angle/color/size curves, entity-attached or world-position emitters, particle pool.
 - **Tweening / Easing** (§5.17) — Tween any numeric property, standard easing functions, chainable sequences, camera shake helper.
 - **Debug Drawing** (§5.18) — Overlay drawing from Lua (rects, circles, lines, paths, text), world-space and screen-space, globally togglable with F3.
 
-### Stage 18: Polish & Release
+### Stage 18: Polish & Release ✓
 Performance profiling, bug fixes, full API documentation, example mods for each game type (platformer, top-down RPG, flight), Steam Deck testing.
+
+### Stage 19: Steam Deck Support ✓
+Full gamepad support, viewport scaling, UI scaling, on-screen keyboard, suspend/resume handling, optional Steamworks SDK integration. See [STEAM_DECK_SPEC.md](STEAM_DECK_SPEC.md) for details.
 
 ### Post-MVP Roadmap
 
@@ -1437,14 +1440,14 @@ Each stage must include documentation before it's considered complete.
 
 ## 12. Open Questions
 
-| Question | Options | Notes |
-|----------|---------|-------|
-| Mod signing | Required, optional, none | Security vs convenience |
-| Circular tile layers | Separate save format? | Chunk serialization for extra layers |
-| Scene/map transitions | Engine-level or mod-level? | Discrete maps vs continuous world |
+| Question | Options | Status |
+|----------|---------|--------|
+| Mod signing | Required, optional, none | Open — security vs convenience |
+| Circular tile layers | Separate save format? | Open — chunk serialization for extra layers |
+| ~~Scene/map transitions~~ | ~~Engine-level or mod-level?~~ | **Resolved** — Engine-level via SceneManager (§5.13) |
 
 ---
 
-*Document Version: 0.4*
+*Document Version: 1.0*
 *Last Updated: February 2026*
-*Status: Stages 0-9 Complete*
+*Status: All Engine Stages Complete (0-19)*

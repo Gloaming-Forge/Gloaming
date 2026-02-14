@@ -210,8 +210,8 @@ The Guide provides contextual tips and shows what items can be crafted from mate
 
 ### 4.1 Terrain Shape
 
-> **Note:** The `worldgen` and `noise` APIs shown below are **planned** (Stage 10).
-> The code examples illustrate the intended design; these functions are not yet implemented.
+> The `worldgen` and `noise` APIs below are implemented in the engine (Stage 12).
+> See ENGINE_SPEC.md §4.3 for the World Generation API.
 
 ```lua
 worldgen.registerTerrainShaper("default", function(x, seed)
