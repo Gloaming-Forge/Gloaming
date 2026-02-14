@@ -2,7 +2,10 @@
 
 #include <string>
 #include <cstdint>
-#include <functional>
+
+#ifdef GLOAMING_STEAM
+#include <steam/steam_api.h>
+#endif
 
 namespace gloaming {
 
@@ -19,8 +22,8 @@ namespace gloaming {
 ///   - Per-frame Steam callback processing
 class SteamIntegration {
 public:
-    /// Initialize the Steam API. Returns false if Steam is not running
-    /// or if GLOAMING_STEAM is not defined.
+    /// Initialize the Steam API. Returns true if already initialized.
+    /// Returns false if Steam is not running or GLOAMING_STEAM is not defined.
     bool init(uint32_t appId);
 
     /// Shutdown the Steam API and release resources.
@@ -35,7 +38,10 @@ public:
 
     // --- On-screen keyboard ---
 
-    /// Show the Steam overlay floating keyboard for text input.
+    /// Show the Steam gamepad text input overlay. All parameters are
+    /// forwarded to SteamUtils::ShowGamepadTextInput(). The result is
+    /// delivered asynchronously via GamepadTextInputDismissed_t and
+    /// made available through hasKeyboardResult()/getKeyboardResult().
     /// No-op when Steam is unavailable; caller should fall back to
     /// the built-in OnScreenKeyboard.
     void showOnScreenKeyboard(const std::string& description,
@@ -73,9 +79,16 @@ private:
     bool m_initialized = false;
     uint32_t m_appId = 0;
 
-    // Keyboard result state
+    // Keyboard result state — populated by onGamepadTextInputDismissed callback
     bool m_hasKeyboardResult = false;
     std::string m_keyboardResult;
+
+#ifdef GLOAMING_STEAM
+    // Steamworks callback for gamepad text input completion.
+    // STEAM_CALLBACK macro registers this with SteamAPI_RunCallbacks().
+    STEAM_CALLBACK(SteamIntegration, onGamepadTextInputDismissed,
+                   GamepadTextInputDismissed_t);
+#endif
 };
 
 } // namespace gloaming

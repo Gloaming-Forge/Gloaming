@@ -967,11 +967,11 @@ void Engine::shutdown() {
     std::signal(SIGTERM, SIG_DFL);
     std::signal(SIGINT, SIG_DFL);
 
-    // Shutdown Steam integration before mods (mods may reference Steam APIs)
-    m_steamIntegration.shutdown();
-
-    // Shutdown mods first (they may reference engine resources)
+    // Shutdown mods first (they may reference engine resources including Steam)
     m_modLoader.shutdown();
+
+    // Shutdown Steam integration after mods have released their references
+    m_steamIntegration.shutdown();
 
     // Shutdown UI system (after mods, before renderer)
     m_uiSystem.shutdown();

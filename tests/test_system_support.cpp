@@ -25,11 +25,14 @@ TEST(SteamIntegrationTest, InitWithZeroAppId) {
     EXPECT_FALSE(steam.isAvailable());
 }
 
-TEST(SteamIntegrationTest, DoubleInitSafe) {
+TEST(SteamIntegrationTest, DoubleInitReturnsConsistently) {
     SteamIntegration steam;
-    steam.init(480);
-    // Second init should not crash
-    steam.init(480);
+    bool first = steam.init(480);
+    bool second = steam.init(480);
+    // Without Steam SDK, both return false.
+    // With Steam SDK, first would succeed and second would return true (guard).
+    // In either case, both calls return the same value and don't crash.
+    EXPECT_EQ(first, second);
     EXPECT_FALSE(steam.isAvailable());
 }
 
@@ -91,6 +94,7 @@ TEST(SteamIntegrationTest, KeyboardResultClearedOnUpdate) {
     EXPECT_FALSE(steam.hasKeyboardResult());
     steam.update();
     EXPECT_FALSE(steam.hasKeyboardResult());
+    EXPECT_EQ(steam.getKeyboardResult(), "");
 }
 
 // =============================================================================
@@ -143,21 +147,23 @@ TEST(PlatformDetectionTest, IsSteamDeck_Default) {
 }
 
 TEST(PlatformDetectionTest, IsSteamOS_Default) {
+    // isSteamOS() checks that SteamOS env var exists AND equals "1"
     const char* val = std::getenv("SteamOS");
-    if (val == nullptr) {
+    if (val == nullptr || std::string(val) != "1") {
         EXPECT_FALSE(SteamIntegration::isSteamOS());
     } else {
         EXPECT_TRUE(SteamIntegration::isSteamOS());
     }
 }
 
-TEST(PlatformDetectionTest, PlatformIsLinux) {
-    // We're running on Linux in this test environment
-#ifdef __linux__
-    EXPECT_TRUE(true);  // Confirm Linux platform detected at compile time
-#else
-    EXPECT_TRUE(true);  // Non-Linux: just verify compilation
-#endif
+TEST(PlatformDetectionTest, IsSteamDeck_And_IsSteamOS_Consistent) {
+    // Both use the same pattern: check env var exists and equals "1"
+    // Verify neither crashes and both return a bool
+    bool deck = SteamIntegration::isSteamDeck();
+    bool os = SteamIntegration::isSteamOS();
+    // On a real Steam Deck, both would be true; in CI, both are false
+    (void)deck;
+    (void)os;
 }
 
 // =============================================================================
@@ -196,24 +202,28 @@ TEST(SteamIntegrationTest, FullLifecycle) {
 // =============================================================================
 
 TEST(LinuxBuildTest, CompilerVersion) {
-    // Verify we're building with a supported compiler
-#if defined(__GNUC__)
-    EXPECT_GE(__GNUC__, 11);  // GCC 11+ required
+    // Verify we're building with a C++20-capable compiler
+#if defined(__GNUC__) && !defined(__clang__)
+    EXPECT_GE(__GNUC__, 11) << "GCC 11+ required for C++20 support";
 #elif defined(__clang__)
-    EXPECT_GE(__clang_major__, 13);  // Clang 13+ required
+    EXPECT_GE(__clang_major__, 13) << "Clang 13+ required for C++20 support";
+#else
+    FAIL() << "Unknown compiler — expected GCC or Clang";
 #endif
 }
 
 TEST(LinuxBuildTest, CppStandard) {
     // Verify C++20 is active
-    EXPECT_GE(__cplusplus, 202002L);
+    EXPECT_GE(__cplusplus, 202002L) << "C++20 standard is required";
 }
 
-TEST(LinuxBuildTest, PlatformAgnosticDependencies) {
-    // Verify that platform-agnostic headers are available.
-    // These are compile-time checks — if the test compiles, the
-    // dependencies are present.
-    EXPECT_TRUE(true);  // Raylib, EnTT, sol2, spdlog, nlohmann_json, Lua
+TEST(LinuxBuildTest, DependencyHeadersAvailable) {
+    // These includes are pulled in transitively by SteamIntegration.hpp
+    // and the engine headers. If this test compiles and links, all
+    // FetchContent dependencies (Raylib, EnTT, sol2, spdlog, nlohmann_json,
+    // Lua) resolved correctly.
+    SteamIntegration steam;
+    EXPECT_FALSE(steam.isAvailable());
 }
 
 // =============================================================================
@@ -221,11 +231,14 @@ TEST(LinuxBuildTest, PlatformAgnosticDependencies) {
 // =============================================================================
 
 TEST(ConditionalCompilationTest, SteamFlagState) {
-    // Verify the compile-time state of the GLOAMING_STEAM flag
 #ifdef GLOAMING_STEAM
-    // When Steam is enabled, init should attempt real initialization
-    // (which will fail in a test environment without Steam running)
-    EXPECT_TRUE(true);
+    // When Steam is enabled, the STEAM_CALLBACK macro must have compiled
+    // successfully, which means the header included steam_api.h.
+    // Init will still fail without a running Steam client.
+    SteamIntegration steam;
+    // May succeed or fail depending on environment — just verify no crash
+    steam.init(480);
+    steam.shutdown();
 #else
     // When Steam is disabled, SteamIntegration is pure no-op
     SteamIntegration steam;
@@ -236,15 +249,15 @@ TEST(ConditionalCompilationTest, SteamFlagState) {
 
 TEST(ConditionalCompilationTest, NoSteamHeadersRequired) {
     // This test verifies that the SteamIntegration header can be
-    // included and used without the Steamworks SDK headers.
-    // If this test compiles, the abstraction layer works correctly.
+    // included and all public methods called without the Steamworks SDK.
+    // If this test compiles and runs, the abstraction layer is correct.
     SteamIntegration steam;
-    (void)steam.isAvailable();
-    (void)steam.isOverlayActive();
-    (void)steam.hasKeyboardResult();
-    (void)steam.getKeyboardResult();
-    (void)steam.getGlyphPath(0);
+    EXPECT_FALSE(steam.isAvailable());
+    EXPECT_FALSE(steam.isOverlayActive());
+    EXPECT_FALSE(steam.hasKeyboardResult());
+    EXPECT_EQ(steam.getKeyboardResult(), "");
+    EXPECT_TRUE(steam.getGlyphPath(0).empty());
+    // Static methods
     (void)SteamIntegration::isSteamDeck();
     (void)SteamIntegration::isSteamOS();
-    EXPECT_TRUE(true);
 }

@@ -9,7 +9,30 @@
 
 namespace gloaming {
 
+#ifdef GLOAMING_STEAM
+// Steam callback handler for gamepad text input dismissed.
+// Captures the submitted text and stores it for the next frame.
+void SteamIntegration::onGamepadTextInputDismissed(
+        GamepadTextInputDismissed_t* pCallback) {
+    if (pCallback->m_bSubmitted) {
+        char buf[4096];
+        uint32_t len = SteamUtils()->GetEnteredGamepadTextLength();
+        if (len > 0 && SteamUtils()->GetEnteredGamepadTextInput(buf, sizeof(buf))) {
+            m_keyboardResult = std::string(buf, len - 1);  // len includes null terminator
+            m_hasKeyboardResult = true;
+            LOG_DEBUG("Steam keyboard text received ({} chars)", m_keyboardResult.size());
+        }
+    } else {
+        LOG_DEBUG("Steam keyboard dismissed without submission");
+    }
+}
+#endif
+
 bool SteamIntegration::init(uint32_t appId) {
+    // Guard against double-init — calling SteamAPI_Init() twice without
+    // SteamAPI_Shutdown() between them is undefined behavior.
+    if (m_initialized) return true;
+
     m_appId = appId;
 
 #ifdef GLOAMING_STEAM
@@ -52,14 +75,15 @@ void SteamIntegration::shutdown() {
 }
 
 void SteamIntegration::update() {
+    // Clear one-shot keyboard result from previous frame
+    m_hasKeyboardResult = false;
+    m_keyboardResult.clear();
+
 #ifdef GLOAMING_STEAM
     if (m_initialized) {
         SteamAPI_RunCallbacks();
     }
 #endif
-
-    // Clear one-shot keyboard result from previous frame
-    m_hasKeyboardResult = false;
 }
 
 bool SteamIntegration::isAvailable() const {
@@ -72,15 +96,19 @@ void SteamIntegration::showOnScreenKeyboard(const std::string& description,
 #ifdef GLOAMING_STEAM
     if (!m_initialized) return;
 
-    // Use the floating gamepad text input — it overlays on top of the game
-    // without taking over the full screen.
+    // Use ShowGamepadTextInput which accepts description, existing text, and
+    // max character count — the callback GamepadTextInputDismissed_t fires
+    // when the user submits or cancels.
     if (SteamUtils()) {
-        bool shown = SteamUtils()->ShowFloatingGamepadTextInput(
-            k_EFloatingGamepadTextInputModeModeSingleLine,
-            0, 0, 0, 0  // Position and size (0 = system default)
+        bool shown = SteamUtils()->ShowGamepadTextInput(
+            k_EGamepadTextInputModeNormal,
+            k_EGamepadTextInputLineModeSingleLine,
+            description.c_str(),
+            static_cast<uint32>(maxChars),
+            existingText.c_str()
         );
         if (!shown) {
-            LOG_WARN("Steam floating keyboard could not be shown");
+            LOG_WARN("Steam gamepad text input could not be shown");
         }
     }
 #else
@@ -130,7 +158,7 @@ bool SteamIntegration::isSteamDeck() {
 
 bool SteamIntegration::isSteamOS() {
     const char* val = std::getenv("SteamOS");
-    return val != nullptr;
+    return val != nullptr && std::string(val) == "1";
 }
 
 } // namespace gloaming

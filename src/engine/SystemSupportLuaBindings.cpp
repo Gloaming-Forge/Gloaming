@@ -8,7 +8,9 @@ void bindSystemSupportAPI(sol::state& lua, Engine& engine) {
     // -----------------------------------------------------------------------
     // steam.* — Steamworks SDK wrapper
     // -----------------------------------------------------------------------
-    sol::table steamApi = lua.create_named_table("steam");
+    sol::table steamApi = lua["steam"].valid()
+        ? lua["steam"].get<sol::table>()
+        : lua.create_named_table("steam");
 
     // steam.is_available() -> bool
     steamApi["is_available"] = [&engine]() -> bool {
@@ -41,7 +43,9 @@ void bindSystemSupportAPI(sol::state& lua, Engine& engine) {
     // -----------------------------------------------------------------------
     // platform.* — Platform detection
     // -----------------------------------------------------------------------
-    sol::table platformApi = lua.create_named_table("platform");
+    sol::table platformApi = lua["platform"].valid()
+        ? lua["platform"].get<sol::table>()
+        : lua.create_named_table("platform");
 
     // platform.is_steam_deck() -> bool
     platformApi["is_steam_deck"] = []() -> bool {
