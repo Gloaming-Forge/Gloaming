@@ -34,6 +34,7 @@ add_executable(gloaming_tests
     test_input_system.cpp
     test_display_system.cpp
     test_seamlessness.cpp
+    test_system_support.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

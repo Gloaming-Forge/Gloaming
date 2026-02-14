@@ -2,6 +2,7 @@
 #include "engine/Log.hpp"
 #include "engine/PolishLuaBindings.hpp"
 #include "engine/SeamlessnessLuaBindings.hpp"
+#include "engine/SystemSupportLuaBindings.hpp"
 #include "rendering/RaylibRenderer.hpp"
 #include "ecs/CoreSystems.hpp"
 #include "gameplay/Gameplay.hpp"
@@ -355,8 +356,13 @@ bool Engine::init(const std::string& configPath) {
         bindSeamlessnessAPI(
             m_modLoader.getLuaBindings().getState(), *this);
 
+        // Register System Support Lua APIs (Stage 19D)
+        bindSystemSupportAPI(
+            m_modLoader.getLuaBindings().getState(), *this);
+
         LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, scene/timer/save, "
-                 "particle/tween/debug, profiler/resource/diagnostics, and seamlessness Lua APIs registered");
+                 "particle/tween/debug, profiler/resource/diagnostics, seamlessness, "
+                 "and system support Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -461,8 +467,18 @@ bool Engine::init(const std::string& configPath) {
         LOG_INFO("Signal handlers installed (SIGTERM, SIGINT)");
     }
 
+    // Stage 19D: System Support — optional Steamworks SDK initialization
+    {
+        uint32_t steamAppId = static_cast<uint32_t>(m_config.getInt("steam.app_id", 0));
+        if (m_steamIntegration.init(steamAppId)) {
+            LOG_INFO("Steam integration active (appId={})", steamAppId);
+        } else {
+            LOG_INFO("Steam integration inactive — engine runs without Steam features");
+        }
+    }
+
     m_running = true;
-    LOG_INFO("Engine initialized successfully — Stage 19C: Seamlessness");
+    LOG_INFO("Engine initialized successfully — Stage 19D: System Support");
     return true;
 }
 
@@ -511,6 +527,9 @@ void Engine::processInput() {
     m_gamepad.update();
     m_inputDeviceTracker.update(m_input, m_gamepad);
 
+    // Stage 19D: Process Steam callbacks (overlay, keyboard, etc.)
+    m_steamIntegration.update();
+
     // Update viewport scaler only when window size actually changes
     if (m_window.pollSizeChanged()) {
         m_viewportScaler.update(m_window.getWidth(), m_window.getHeight());
@@ -538,8 +557,9 @@ void Engine::processInput() {
         m_time.clampNextDelta(0.1);
     }
 
-    // Signal 2: focus-based suspend for extended unfocus
-    if (!m_window.isFocused()) {
+    // Signal 2: focus-based suspend for extended unfocus (also triggers on Steam overlay)
+    bool effectivelyUnfocused = !m_window.isFocused() || m_steamIntegration.isOverlayActive();
+    if (effectivelyUnfocused) {
         m_unfocusedTimer += static_cast<float>(m_time.deltaTime());
         if (!m_wasSuspended && m_unfocusedTimer >= SUSPEND_THRESHOLD) {
             // --- Enter suspended state ---
@@ -763,7 +783,7 @@ void Engine::render() {
     } else {
         // Default HUD (when diagnostics overlay is off)
         char bannerBuf[128];
-        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19C: Seamlessness", kEngineVersion);
+        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19D: System Support", kEngineVersion);
         m_renderer->drawText(bannerBuf, {20, 20}, 20, Color::White());
 
         char fpsText[64];
@@ -946,6 +966,9 @@ void Engine::shutdown() {
     // Restore default signal handlers
     std::signal(SIGTERM, SIG_DFL);
     std::signal(SIGINT, SIG_DFL);
+
+    // Shutdown Steam integration before mods (mods may reference Steam APIs)
+    m_steamIntegration.shutdown();
 
     // Shutdown mods first (they may reference engine resources)
     m_modLoader.shutdown();
