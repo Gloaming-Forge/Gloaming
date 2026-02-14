@@ -173,6 +173,9 @@ public:
     SteamIntegration& getSteamIntegration() { return m_steamIntegration; }
     const SteamIntegration& getSteamIntegration() const { return m_steamIntegration; }
 
+    // Configuration Persistence (Stage 19E)
+    const std::string& getLocalConfigPath() const { return m_localConfigPath; }
+
 private:
     void processInput();
     void update(double dt);
@@ -263,6 +266,9 @@ private:
 
     // Steam Integration (Stage 19D)
     SteamIntegration m_steamIntegration;
+
+    // Configuration Persistence (Stage 19E)
+    std::string m_localConfigPath;  ///< Derived path for per-device config overrides
 
     bool m_wasSuspended = false;
     float m_unfocusedTimer = 0.0f;

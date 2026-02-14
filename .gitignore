@@ -31,5 +31,8 @@ desktop.ini
 # Logs
 *.log
 
+# Per-device local config (Stage 19E — not synced via Steam Cloud)
+config.local.json
+
 # Dependencies (fetched by CMake)
 _deps/

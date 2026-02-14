@@ -3,6 +3,7 @@
 #include "engine/PolishLuaBindings.hpp"
 #include "engine/SeamlessnessLuaBindings.hpp"
 #include "engine/SystemSupportLuaBindings.hpp"
+#include "engine/ConfigPersistenceLuaBindings.hpp"
 #include "rendering/RaylibRenderer.hpp"
 #include "ecs/CoreSystems.hpp"
 #include "gameplay/Gameplay.hpp"
@@ -19,15 +20,9 @@
 #include <raylib.h>
 #include <cstdlib>
 #include <csignal>
+#include <filesystem>
 
 namespace gloaming {
-
-namespace {
-    bool isSteamDeck() {
-        const char* val = std::getenv("SteamDeck");
-        return val != nullptr && std::string(val) == "1";
-    }
-} // anonymous namespace
 
 // Stage 19C: Seamlessness — signal handling
 std::atomic<bool> Engine::s_signalReceived{false};
@@ -64,10 +59,26 @@ bool Engine::init(const std::string& configPath) {
         LOG_INFO("Configuration loaded from '{}'", configPath);
     }
 
+    // Stage 19E: Merge per-device local config on top of the base config.
+    // config.local.json is device-specific (gitignored, not synced via Steam Cloud)
+    // and overrides display/input settings for the current hardware.
+    {
+        // Derive local config path: "config.json" -> "config.local.json"
+        namespace fs = std::filesystem;
+        fs::path base(configPath);
+        fs::path localFile = base.parent_path()
+            / (base.stem().string() + ".local" + base.extension().string());
+        m_localConfigPath = localFile.string();
+
+        if (m_config.mergeFromFile(m_localConfigPath)) {
+            LOG_INFO("Per-device config merged from '{}'", m_localConfigPath);
+        }
+    }
+
     LOG_INFO("Gloaming Engine v{} starting...", kEngineVersion);
 
     // Platform-aware defaults for Steam Deck
-    bool onDeck = isSteamDeck();
+    bool onDeck = SteamIntegration::isSteamDeck();
     int defaultWidth  = 1280;
     int defaultHeight = onDeck ? 800 : 720;
     bool defaultFS    = onDeck;
@@ -360,9 +371,13 @@ bool Engine::init(const std::string& configPath) {
         bindSystemSupportAPI(
             m_modLoader.getLuaBindings().getState(), *this);
 
+        // Register Config Persistence Lua APIs (Stage 19E)
+        bindConfigPersistenceAPI(
+            m_modLoader.getLuaBindings().getState(), *this);
+
         LOG_INFO("Gameplay, entity, worldgen, gameplay loop, enemy AI, NPC, scene/timer/save, "
                  "particle/tween/debug, profiler/resource/diagnostics, seamlessness, "
-                 "and system support Lua APIs registered");
+                 "system support, and config persistence Lua APIs registered");
 
         int discovered = m_modLoader.discoverMods();
         if (discovered > 0) {
@@ -399,7 +414,11 @@ bool Engine::init(const std::string& configPath) {
         m_haptics.setEnabled(rumbleEnabled);
         m_haptics.setIntensity(rumbleIntensity);
 
-        std::string glyphStyle = m_config.getString("input.glyph_style", "xbox");
+        std::string glyphStyle = m_config.getString("input.glyph_style", "auto");
+        if (glyphStyle == "auto") {
+            // Auto-detect: Xbox glyphs on Steam Deck (ABXY labeling), Keyboard elsewhere
+            glyphStyle = onDeck ? "xbox" : "keyboard";
+        }
         if (glyphStyle == "playstation")       m_inputGlyphProvider.setGlyphStyle(GlyphStyle::PlayStation);
         else if (glyphStyle == "nintendo")     m_inputGlyphProvider.setGlyphStyle(GlyphStyle::Nintendo);
         else if (glyphStyle == "keyboard")     m_inputGlyphProvider.setGlyphStyle(GlyphStyle::Keyboard);
@@ -478,7 +497,7 @@ bool Engine::init(const std::string& configPath) {
     }
 
     m_running = true;
-    LOG_INFO("Engine initialized successfully — Stage 19D: System Support");
+    LOG_INFO("Engine initialized successfully — Stage 19E: Configuration and Persistence");
     return true;
 }
 
@@ -783,7 +802,7 @@ void Engine::render() {
     } else {
         // Default HUD (when diagnostics overlay is off)
         char bannerBuf[128];
-        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19D: System Support", kEngineVersion);
+        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19E: Config Persistence", kEngineVersion);
         m_renderer->drawText(bannerBuf, {20, 20}, 20, Color::White());
 
         char fpsText[64];
