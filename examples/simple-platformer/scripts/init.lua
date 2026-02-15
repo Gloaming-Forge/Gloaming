@@ -326,7 +326,7 @@ events.on("update", function(dt)
     player_mod.update(state.player, dt)
 
     -- Pause key
-    if input_actions.is_pressed("pause") then
+    if input_actions.is_pressed("menu") then
         events.emit("pause_toggle")
         return
     end

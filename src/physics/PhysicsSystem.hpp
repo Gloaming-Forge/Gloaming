@@ -377,30 +377,60 @@ inline void PhysicsSystem::handleEntityCollisions() {
         eventB.otherEntity = collision.entityA;
         fireCollisionEvent(eventB);
 
-        // Simple separation (push entities apart) and cancel colliding velocity
+        // Separate overlapping entities and cancel colliding velocity.
+        // Entities without a Velocity component are treated as static
+        // (e.g. tile entities) and are never pushed.
         auto& registry = getRegistry();
         if (registry.has<Transform>(collision.entityA) && registry.has<Transform>(collision.entityB)) {
             auto& transformA = registry.get<Transform>(collision.entityA);
             auto& transformB = registry.get<Transform>(collision.entityB);
 
-            Vec2 separation = resolvePenetration(collision, 0.5f);
-            transformA.position = transformA.position + separation;
-            transformB.position = transformB.position - separation;
+            bool dynamicA = registry.has<Velocity>(collision.entityA);
+            bool dynamicB = registry.has<Velocity>(collision.entityB);
+
+            // Determine push ratio: static entities receive none of the push
+            float ratioA, ratioB;
+            if (dynamicA && dynamicB) {
+                ratioA = 0.5f;
+                ratioB = 0.5f;
+            } else if (dynamicA) {
+                ratioA = 1.0f;
+                ratioB = 0.0f;
+            } else if (dynamicB) {
+                ratioA = 0.0f;
+                ratioB = 1.0f;
+            } else {
+                // Both static — no movement
+                ratioA = 0.0f;
+                ratioB = 0.0f;
+            }
+
+            Vec2 fullSeparation = collision.normal * collision.penetration;
+            transformA.position = transformA.position + fullSeparation * ratioA;
+            transformB.position = transformB.position - fullSeparation * ratioB;
 
             // Zero out velocity components along collision normal to prevent re-penetration
-            if (registry.has<Velocity>(collision.entityA)) {
+            if (dynamicA) {
                 auto& velA = registry.get<Velocity>(collision.entityA);
                 float dotA = Vec2::dot(velA.linear, collision.normal);
                 if (dotA < 0.0f) { // Only cancel if moving into collision
                     velA.linear = velA.linear - collision.normal * dotA;
                 }
+                // Update grounded state when landing on a static entity
+                if (!dynamicB && collision.normal.y < -0.5f && registry.has<Gravity>(collision.entityA)) {
+                    registry.get<Gravity>(collision.entityA).grounded = true;
+                }
             }
-            if (registry.has<Velocity>(collision.entityB)) {
+            if (dynamicB) {
                 auto& velB = registry.get<Velocity>(collision.entityB);
                 Vec2 normalB = collision.normal * -1.0f;
                 float dotB = Vec2::dot(velB.linear, normalB);
                 if (dotB < 0.0f) { // Only cancel if moving into collision
                     velB.linear = velB.linear - normalB * dotB;
+                }
+                // Update grounded state when landing on a static entity
+                if (!dynamicA && normalB.y < -0.5f && registry.has<Gravity>(collision.entityB)) {
+                    registry.get<Gravity>(collision.entityB).grounded = true;
                 }
             }
         }
