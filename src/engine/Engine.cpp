@@ -189,12 +189,10 @@ bool Engine::init(const std::string& configPath) {
         lightCfg.lightMap.enableSmoothLighting = m_config.getBool("lighting.smooth", true);
         lightCfg.dayNight.dayDurationSeconds = m_config.getFloat("lighting.day_duration", 600.0f);
         lightCfg.recalcInterval = m_config.getFloat("lighting.recalc_interval", 0.1f);
-        lightCfg.enabled = m_config.getBool("lighting.enabled", true);
+        lightCfg.enabled = m_config.getBool("lighting.enabled", false);
 
         m_lightingSystem = m_systemScheduler.addSystem<LightingSystem>(
             SystemPhase::PostUpdate, lightCfg);
-        // Start at mid-day so the default scene isn't pitch-black
-        m_lightingSystem->getDayNightCycle().setNormalizedTime(0.50f);
 
         LOG_INFO("Lighting system initialized (smooth={}, skylight={}, day_duration={}s)",
                  lightCfg.lightMap.enableSmoothLighting,
