@@ -6,6 +6,7 @@
 #include "engine/ConfigPersistenceLuaBindings.hpp"
 #include "rendering/RaylibRenderer.hpp"
 #include "ecs/CoreSystems.hpp"
+#include "physics/PhysicsSystem.hpp"
 #include "gameplay/Gameplay.hpp"
 #include "gameplay/GameplayLuaBindings.hpp"
 #include "gameplay/EntityLuaBindings.hpp"
@@ -192,6 +193,8 @@ bool Engine::init(const std::string& configPath) {
 
         m_lightingSystem = m_systemScheduler.addSystem<LightingSystem>(
             SystemPhase::PostUpdate, lightCfg);
+        // Start at mid-day so the default scene isn't pitch-black
+        m_lightingSystem->getDayNightCycle().setNormalizedTime(0.50f);
 
         LOG_INFO("Lighting system initialized (smooth={}, skylight={}, day_duration={}s)",
                  lightCfg.lightMap.enableSmoothLighting,
@@ -233,6 +236,14 @@ bool Engine::init(const std::string& configPath) {
             Tile tile = m_tileMap.getTile(tileX, tileY);
             return !tile.isSolid();
         });
+
+        // Physics system — gravity, velocity integration, tile collision
+        {
+            auto* physics = m_systemScheduler.addSystem<PhysicsSystem>(SystemPhase::Update);
+            if (m_tileMap.isWorldLoaded()) {
+                physics->setTileMap(&m_tileMap);
+            }
+        }
 
         // State machine system (for entity AI)
         m_systemScheduler.addSystem<StateMachineSystem>(SystemPhase::Update);
@@ -799,180 +810,10 @@ void Engine::render() {
     // Render on-screen keyboard (above everything else)
     m_onScreenKeyboard.render(m_renderer.get());
 
-    // Render diagnostic overlay (Stage 18) — replaces old HUD when active
+    // Render diagnostic overlay (Stage 18)
     if (m_diagnosticOverlay.isVisible()) {
         m_diagnosticOverlay.render(m_renderer.get(), m_profiler, m_resourceManager, *this);
-    } else {
-        // Default HUD (when diagnostics overlay is off)
-        char bannerBuf[128];
-        snprintf(bannerBuf, sizeof(bannerBuf), "Gloaming Engine v%s - Stage 19E: Config Persistence", kEngineVersion);
-        m_renderer->drawText(bannerBuf, {20, 20}, 20, Color::White());
-
-        char fpsText[64];
-        snprintf(fpsText, sizeof(fpsText), "FPS: %d  (%.2f ms)", GetFPS(), m_profiler.frameTimeMs());
-        m_renderer->drawText(fpsText, {20, 50}, 16, Color::Green());
-
-        // Camera info
-        Vec2 camPos = m_camera.getPosition();
-        char camText[128];
-        snprintf(camText, sizeof(camText), "Camera: (%.1f, %.1f) Zoom: %.2f",
-                 camPos.x, camPos.y, m_camera.getZoom());
-        m_renderer->drawText(camText, {20, 80}, 16, Color(100, 200, 255, 255));
-
-        // Chunk info
-        if (m_tileMap.isWorldLoaded()) {
-            const auto& stats = m_tileMap.getStats();
-            char chunkText[128];
-            snprintf(chunkText, sizeof(chunkText), "Chunks: %zu loaded | %zu dirty | Rendered: %zu tiles",
-                     stats.loadedChunks, stats.dirtyChunks, m_tileRenderer.getTilesRendered());
-            m_renderer->drawText(chunkText, {20, 110}, 16, Color(200, 200, 100, 255));
-        }
-
-        // Mod info
-        char modText[192];
-        snprintf(modText, sizeof(modText),
-                 "Mods: %zu loaded | Content: %zu tiles, %zu items, %zu enemies, %zu npcs, %zu shops",
-                 m_modLoader.loadedCount(),
-                 m_modLoader.getContentRegistry().tileCount(),
-                 m_modLoader.getContentRegistry().itemCount(),
-                 m_modLoader.getContentRegistry().enemyCount(),
-                 m_modLoader.getContentRegistry().npcCount(),
-                 m_modLoader.getContentRegistry().shopCount());
-        m_renderer->drawText(modText, {20, 140}, 16, Color(200, 150, 255, 255));
-
-        // Lighting info
-        if (m_lightingSystem) {
-            const auto& lStats = m_lightingSystem->getStats();
-            const auto& dnc = m_lightingSystem->getDayNightCycle();
-            const char* todStr = "?";
-            switch (dnc.getTimeOfDay()) {
-                case TimeOfDay::Dawn:  todStr = "Dawn";  break;
-                case TimeOfDay::Day:   todStr = "Day";   break;
-                case TimeOfDay::Dusk:  todStr = "Dusk";  break;
-                case TimeOfDay::Night: todStr = "Night"; break;
-            }
-            char lightText[192];
-            snprintf(lightText, sizeof(lightText),
-                     "Light: %zu sources | %zu tiles | %.1fms | %s (%.0f%% bright) | Day %d",
-                     lStats.pointLightCount, lStats.tilesLit, lStats.lastRecalcTimeMs,
-                     todStr, lStats.skyBrightness * 100.0f, dnc.getDayCount());
-            m_renderer->drawText(lightText, {20, 170}, 16, Color(255, 220, 100, 255));
-        }
-
-        // Audio info
-        if (m_audioSystem) {
-            auto aStats = m_audioSystem->getStats();
-            std::string audioText = "Audio: ";
-            audioText += aStats.deviceInitialized ? "ready" : "no device";
-            audioText += " | " + std::to_string(aStats.registeredSounds) + " sounds registered";
-            audioText += " | " + std::to_string(aStats.activeSounds) + " playing";
-            audioText += " | Music: ";
-            audioText += aStats.musicPlaying ? aStats.currentMusic : "none";
-            m_renderer->drawText(audioText.c_str(), {20, 200}, 16, Color(150, 255, 150, 255));
-        }
-
-        // UI info
-        {
-            auto uiStats = m_uiSystem.getStats();
-            char uiText[128];
-            snprintf(uiText, sizeof(uiText), "UI: %zu screens (%zu visible) | %zu elements",
-                     uiStats.screenCount, uiStats.visibleScreenCount, uiStats.totalElements);
-            m_renderer->drawText(uiText, {20, 230}, 16, Color(220, 180, 255, 255));
-        }
-
-        // Enemy info (Stage 14)
-        if (m_enemySpawnSystem) {
-            const auto& eStats = m_enemySpawnSystem->getStats();
-            char enemyText[192];
-            snprintf(enemyText, sizeof(enemyText),
-                     "Enemies: %d active | %d spawned | %d killed | Spawning: %s",
-                     eStats.activeEnemies, eStats.totalSpawned, eStats.totalKilled,
-                     m_enemySpawnSystem->getConfig().enabled ? "on" : "off");
-            m_renderer->drawText(enemyText, {20, 260}, 16, Color(255, 150, 150, 255));
-        }
-
-        // NPC info (Stage 15)
-        {
-            int npcCount = 0;
-            m_registry.each<NPCTag>([&npcCount](Entity, const NPCTag&) { ++npcCount; });
-            char npcText[128];
-            snprintf(npcText, sizeof(npcText), "NPCs: %d active | Rooms: %zu validated",
-                     npcCount, m_housingSystem ? m_housingSystem->getValidRoomCount() : 0u);
-            m_renderer->drawText(npcText, {20, 290}, 16, Color(150, 200, 255, 255));
-        }
-
-        // Scene, Timer & Save info (Stage 16)
-        {
-            char stageText[192];
-            const char* sceneName = m_sceneManager.currentScene().empty() ? "none" : m_sceneManager.currentScene().c_str();
-            snprintf(stageText, sizeof(stageText),
-                     "Scene: %s | Timers: %zu active | Save: %zu mods%s",
-                     sceneName,
-                     m_timerSystem.activeCount(),
-                     m_saveSystem.modCount(),
-                     m_saveSystem.isDirty() ? " (dirty)" : "");
-            m_renderer->drawText(stageText, {20, 320}, 16, Color(200, 255, 200, 255));
-        }
-
-        // Particle, Tween & Debug info (Stage 17)
-        {
-            char polishText[256];
-            auto pStats = m_particleSystem ? m_particleSystem->getStats()
-                                           : ParticleSystem::Stats{};
-            snprintf(polishText, sizeof(polishText),
-                     "Particles: %zu emitters, %zu alive | Tweens: %zu active | Debug: %s",
-                     pStats.activeEmitters, pStats.activeParticles,
-                     m_tweenSystem.activeCount(),
-                     m_debugDrawSystem.isEnabled() ? "on" : "off");
-            m_renderer->drawText(polishText, {20, 350}, 16, Color(255, 200, 150, 255));
-        }
-
-        // Profiler & Resources (Stage 18)
-        {
-            auto rStats = m_resourceManager.getStats();
-            char profText[256];
-            snprintf(profText, sizeof(profText),
-                     "Profiler: %s | Budget: %.0f%% | Resources: %zu tracked",
-                     m_profiler.isEnabled() ? "on" : "off",
-                     m_profiler.frameBudgetUsage() * 100.0,
-                     rStats.totalCount);
-            m_renderer->drawText(profText, {20, 380}, 16, Color(200, 220, 255, 255));
-        }
-
-        // Input device info (Stage 19A)
-        {
-            const char* deviceStr = (m_inputDeviceTracker.getActiveDevice() == InputDevice::Gamepad) ? "Gamepad" : "Keyboard/Mouse";
-            int gpCount = m_gamepad.getConnectedCount();
-            char inputText[128];
-            snprintf(inputText, sizeof(inputText), "Input: %s | Gamepads: %d connected",
-                     deviceStr, gpCount);
-            m_renderer->drawText(inputText, {20, 410}, 16, Color(180, 220, 255, 255));
-        }
-
-        // Display info (Stage 19B)
-        {
-            const char* modeStr = "Expand";
-            switch (m_viewportScaler.getConfig().scaleMode) {
-                case ScaleMode::FillCrop:    modeStr = "FillCrop";    break;
-                case ScaleMode::FitLetterbox: modeStr = "FitLetterbox"; break;
-                case ScaleMode::Stretch:     modeStr = "Stretch";     break;
-                case ScaleMode::Expand:      modeStr = "Expand";      break;
-            }
-            char displayText[192];
-            snprintf(displayText, sizeof(displayText),
-                     "Display: %dx%d eff | %s | Scale: %.2f | UI: %.2fx | %dHz | FPS cap: %d",
-                     m_viewportScaler.getEffectiveWidth(),
-                     m_viewportScaler.getEffectiveHeight(),
-                     modeStr, m_viewportScaler.getScale(),
-                     m_uiScaling.getScale(),
-                     m_window.getRefreshRate(),
-                     m_time.getTargetFPS());
-            m_renderer->drawText(displayText, {20, 440}, 16, Color(150, 220, 200, 255));
-        }
     }
-
-    m_renderer->drawText("WASD/Arrows: Move | Q/E: Zoom | F2: Diagnostics | F3: Debug | F4: Profiler | L: Light | F11: FS",
-                         {20, 470}, 16, Color::Gray());
 
     m_renderer->endFrame();
     // Camera shake offset is automatically undone by ShakeGuard destructor
