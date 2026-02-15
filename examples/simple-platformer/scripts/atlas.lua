@@ -465,7 +465,7 @@ atlas.backgrounds = {
 function atlas.rect(sheet_table, name)
     local r = sheet_table.regions[name]
     if not r then
-        log.error("Atlas: unknown region "" .. name .. """)
+        log.error("Atlas: unknown region '" .. name .. "'")
         return nil
     end
     return r
