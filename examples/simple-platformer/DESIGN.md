@@ -45,44 +45,50 @@ These are all engine features that exist but are deliberately excluded to keep t
 
 ## 3. Asset Pack
 
-### Kenney "New Platformer Pack"
+### Kenney "Platformer Pack"
 
-| Detail | Value |
-|--------|-------|
-| **Asset count** | ~440 separate PNGs + spritesheets |
-| **Tile size** | 128x128 pixels |
-| **Player sprite** | 128x256 pixels (multiple poses) |
-| **License** | CC0 1.0 (public domain) |
-| **Contents** | Terrain tiles, player characters, enemies, items, HUD elements, backgrounds, sounds |
+The assets ship as packed sprite sheets with XML atlas descriptors, not individual PNGs.
 
-### Asset Organization
+| Sheet | File | Frame size | Padding | Contents |
+|-------|------|-----------|---------|----------|
+| **Characters** | `spritesheet-characters-double.png/.xml` | 256x256 | 1px | 5 character colors (beige, green, pink, purple, yellow), 9 poses each: climb_a, climb_b, duck, front, hit, idle, jump, walk_a, walk_b |
+| **Enemies** | `spritesheet-enemies-double.png/.xml` | 128x128 | 1px | 15+ enemy types: barnacle, bee, block, fish (3 colors), fly, frog, ladybug, mouse, saw, slime (4 variants), snail, worm (2 variants) |
+| **Tiles** | `spritesheet-tiles-double.png/.xml` | 128x128 | 1px | 316 tiles: terrain (6 biomes x full 9-piece blocks, platforms, ramps, clouds), coins (gold/silver/bronze), flags, gems, spikes, springs, HUD elements (hearts, digits, coin icon, player portraits), doors, keys, locks, decorations |
+| **Backgrounds** | `spritesheet-backgrounds-double.png/.xml` | 512x512 | 1px | 15 backgrounds: clouds, color/fade variants (desert, hills, mushrooms, trees), solid fills (cloud, dirt, grass, sand, sky) |
 
-Assets from the pack should be placed in the following structure:
+**Sounds** (10 OGG files):
 
+| File | Use |
+|------|-----|
+| `sfx_jump.ogg` | Player jump |
+| `sfx_jump-high.ogg` | High jump / stomp bounce |
+| `sfx_coin.ogg` | Coin collected |
+| `sfx_gem.ogg` | Gem collected (unused, reserve) |
+| `sfx_hurt.ogg` | Player takes damage |
+| `sfx_bump.ogg` | Hit a wall / blocked |
+| `sfx_disappear.ogg` | Enemy defeated |
+| `sfx_select.ogg` | Menu selection |
+| `sfx_magic.ogg` | Flag / level complete |
+| `sfx_throw.ogg` | Unused, reserve |
+
+No music track is included. We will either source a CC0 loop separately or ship without
+background music in v1.
+
+### Atlas XML Format
+
+Each `.xml` file maps named sub-textures to pixel rectangles in the sheet:
+
+```xml
+<TextureAtlas imagePath="spritesheet-enemies-double.png">
+    <SubTexture name="slime_normal_walk_a" x="516" y="645" width="128" height="128"/>
+    <SubTexture name="slime_normal_walk_b" x="645" y="645" width="128" height="128"/>
+    ...
+</TextureAtlas>
 ```
-examples/simple-platformer/
-└── assets/
-    ├── sprites/
-    │   ├── player/          # Player character poses (idle, walk, jump, hurt)
-    │   └── enemies/         # Enemy sprites (walk, squished)
-    ├── tiles/
-    │   ├── terrain/         # Ground, grass, dirt, stone, sand
-    │   ├── decoration/      # Bushes, signs, fences
-    │   └── interactive/     # Coins, flag, spring, spikes
-    ├── backgrounds/         # Parallax background layers
-    ├── hud/                 # Hearts, coin icon, number sprites
-    └── sounds/
-        ├── jump.ogg
-        ├── coin.ogg
-        ├── stomp.ogg
-        ├── hurt.ogg
-        ├── flag.ogg
-        └── music.ogg
-```
 
-> **Note to asset organizer:** Copy the relevant PNGs from the Kenney pack into this
-> structure. Rename files to be descriptive (e.g., `player_idle.png` not `tile_0012.png`).
-> The exact filenames will be referenced in the content JSON and Lua scripts.
+The engine's `TextureAtlas` class supports `addRegion()` and `addGrid()` with padding
+parameters in C++, but does not currently parse XML atlas files. See Section 4.4 for
+how the mod bridges this gap.
 
 ---
 
@@ -131,16 +137,103 @@ input_actions.register_platformer_defaults()
 
 ### 4.3 Tile Size and Scale
 
-The Kenney pack uses 128x128 pixel tiles. For the game world:
+The Kenney pack uses 128x128 pixel tiles and 256x256 character sprites.
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| **Tile size** | 128x128 px | Matches Kenney asset grid |
-| **Player size** | 128x256 px (1x2 tiles) | Matches Kenney player sprites |
+| **Tile size** | 128x128 px | Matches Kenney tile grid |
+| **Player size** | 256x256 px (2x2 tiles) | Matches Kenney character sprites — square astronaut characters |
+| **Enemy size** | 128x128 px (1x1 tile) | Matches Kenney enemy grid |
+| **Background size** | 512x512 px | Tiled to fill the viewport |
 | **Design resolution** | 1280x720 | Engine default, 10 tiles wide x ~5.6 tiles tall visible |
 | **Steam Deck** | 1280x800 | Handled by ViewportScaler, slightly more vertical view |
 
-At 128px tiles with a 1280x720 viewport, the player sees 10 tiles horizontally and ~5.6 vertically. This gives good visibility for a platformer without making the player sprite too small.
+At 128px tiles with a 1280x720 viewport, the player sees 10 tiles horizontally and ~5.6
+vertically. The 256x256 player character occupies 2x2 tiles — prominent but not
+overwhelming. Good visibility for a platformer.
+
+### 4.4 Atlas Loading Strategy
+
+The engine does not parse XML atlas files natively. The mod bridges this gap with a
+`scripts/atlas.lua` helper that hardcodes the sub-texture coordinates from each XML file
+as Lua tables:
+
+```lua
+-- scripts/atlas.lua
+-- Auto-generated from the Kenney XML atlas files.
+-- Each entry maps a sprite name to { x, y, w, h } in the source sheet.
+
+local atlas = {}
+
+atlas.characters = {
+    sheet = "reference/Spritesheets/spritesheet-characters-double.png",
+    frame_size = 256,  -- all frames are 256x256
+    padding = 1,
+    regions = {
+        character_beige_climb_a = { x = 0,    y = 0,   w = 256, h = 256 },
+        character_beige_climb_b = { x = 257,  y = 0,   w = 256, h = 256 },
+        character_beige_duck    = { x = 514,  y = 0,   w = 256, h = 256 },
+        character_beige_front   = { x = 771,  y = 0,   w = 256, h = 256 },
+        character_beige_hit     = { x = 1028, y = 0,   w = 256, h = 256 },
+        character_beige_idle    = { x = 1285, y = 0,   w = 256, h = 256 },
+        character_beige_jump    = { x = 1542, y = 0,   w = 256, h = 256 },
+        character_beige_walk_a  = { x = 0,    y = 257, w = 256, h = 256 },
+        character_beige_walk_b  = { x = 257,  y = 257, w = 256, h = 256 },
+        -- ... (all 45 character sprites)
+    }
+}
+
+atlas.enemies = {
+    sheet = "reference/Spritesheets/spritesheet-enemies-double.png",
+    frame_size = 128,
+    padding = 1,
+    regions = {
+        slime_normal_walk_a = { x = 516, y = 645, w = 128, h = 128 },
+        slime_normal_walk_b = { x = 645, y = 645, w = 128, h = 128 },
+        slime_normal_flat   = { x = 258, y = 645, w = 128, h = 128 },
+        slime_normal_rest   = { x = 387, y = 645, w = 128, h = 128 },
+        fly_a               = { x = 258, y = 258, w = 128, h = 128 },
+        fly_b               = { x = 387, y = 258, w = 128, h = 128 },
+        fly_rest            = { x = 516, y = 258, w = 128, h = 128 },
+        -- ... (all 62 enemy sprites)
+    }
+}
+
+atlas.tiles = {
+    sheet = "reference/Spritesheets/spritesheet-tiles-double.png",
+    frame_size = 128,
+    padding = 1,
+    regions = {
+        -- ... (all 316 tile sprites)
+    }
+}
+
+atlas.backgrounds = {
+    sheet = "reference/Spritesheets/spritesheet-backgrounds-double.png",
+    frame_size = 512,
+    padding = 1,
+    regions = {
+        -- ... (all 15 background sprites)
+    }
+}
+
+-- Helper: get the source rect for a named sprite
+function atlas.rect(sheet_table, name)
+    local r = sheet_table.regions[name]
+    if not r then
+        log.error("Atlas: unknown region '" .. name .. "'")
+        return nil
+    end
+    return r
+end
+
+return atlas
+```
+
+This is generated once from the XML files and checked into the mod. It avoids needing
+an XML parser in Lua and makes sprite lookups fast (table indexing). A future engine
+enhancement could add `atlas.load_xml()` as a native Lua binding, which would replace
+this file.
 
 ---
 
@@ -148,7 +241,17 @@ At 128px tiles with a 1280x720 viewport, the player sees 10 tiles horizontally a
 
 ### 5.1 Player
 
-**Sprites:** idle, walk (2-4 frames), jump (ascending), fall (descending), hurt
+We use the **beige** character. Available poses from the atlas:
+
+| Atlas name | Use |
+|------------|-----|
+| `character_beige_idle` | Standing still |
+| `character_beige_walk_a`, `_walk_b` | Walk cycle (2 frames) |
+| `character_beige_jump` | Ascending / in-air |
+| `character_beige_duck` | Ducking (used for falling — visually distinct from jump) |
+| `character_beige_hit` | Taking damage |
+| `character_beige_front` | Title screen / HUD portrait |
+| `character_beige_climb_a`, `_climb_b` | Ladder climbing (future use) |
 
 **Behavior:**
 - Horizontal movement at 350 px/s
@@ -162,11 +265,13 @@ At 128px tiles with a 1280x720 viewport, the player sees 10 tiles horizontally a
 
 **Components:**
 ```lua
+entity.set_sprite(player, atlas.characters.sheet)
+
 entity.set_component(player, "collider", {
-    width = 80,
+    width = 160,
     height = 200,
-    offset_x = 24,
-    offset_y = 56,
+    offset_x = 48,
+    offset_y = 48,
     layer = "player",
     mask = {"tile", "enemy", "pickup", "hazard", "trigger"}
 })
@@ -179,59 +284,102 @@ entity.set_component(player, "health", {
 entity.set_component(player, "gravity", { scale = 1.0 })
 ```
 
-The collider is slightly smaller than the sprite (80x200 vs 128x256) for forgiving gameplay — a common platformer technique worth teaching.
+The collider is smaller than the 256x256 sprite (160x200) for forgiving gameplay — a
+common platformer technique worth teaching. The astronaut character has transparent
+padding around the body that makes this natural.
 
-**Animation clips:**
+**Animation clips** use atlas coordinates from `scripts/atlas.lua`:
 ```lua
-animation.add(player, "idle",  { sheet = "sprites/player/player_idle.png",  frames = 1, fps = 1,  mode = "loop", frame_width = 128, frame_height = 256 })
-animation.add(player, "walk",  { sheet = "sprites/player/player_walk.png",  frames = 4, fps = 8,  mode = "loop", frame_width = 128, frame_height = 256 })
-animation.add(player, "jump",  { sheet = "sprites/player/player_jump.png",  frames = 1, fps = 1,  mode = "once", frame_width = 128, frame_height = 256 })
-animation.add(player, "fall",  { sheet = "sprites/player/player_fall.png",  frames = 1, fps = 1,  mode = "once", frame_width = 128, frame_height = 256 })
-animation.add(player, "hurt",  { sheet = "sprites/player/player_hurt.png",  frames = 1, fps = 1,  mode = "once", frame_width = 128, frame_height = 256 })
+local A = atlas.characters.regions
+
+-- Single-frame poses: use the atlas rect directly as the source rect
+animation.add(player, "idle", { row = 0, frames = 1, fps = 1,  mode = "loop",
+    frame_width = 256, frame_height = 256, offset_x = A.character_beige_idle.x, offset_y = A.character_beige_idle.y })
+
+-- Walk cycle: 2 frames from atlas
+animation.add(player, "walk", { row = 0, frames = 2, fps = 6,  mode = "loop",
+    frame_width = 256, frame_height = 256, offset_x = A.character_beige_walk_a.x, offset_y = A.character_beige_walk_a.y })
+
+animation.add(player, "jump", { row = 0, frames = 1, fps = 1,  mode = "once",
+    frame_width = 256, frame_height = 256, offset_x = A.character_beige_jump.x, offset_y = A.character_beige_jump.y })
+
+animation.add(player, "fall", { row = 0, frames = 1, fps = 1,  mode = "once",
+    frame_width = 256, frame_height = 256, offset_x = A.character_beige_duck.x, offset_y = A.character_beige_duck.y })
+
+animation.add(player, "hurt", { row = 0, frames = 1, fps = 1,  mode = "once",
+    frame_width = 256, frame_height = 256, offset_x = A.character_beige_hit.x, offset_y = A.character_beige_hit.y })
 ```
+
+> **Note:** The exact animation API for atlas-based frames depends on engine support. If
+> `animation.add()` doesn't support `offset_x/offset_y`, we'll set `Sprite.sourceRect`
+> directly from the atlas coordinates in the update loop. This is a known integration
+> point that will be resolved during implementation (Step 3).
 
 ### 5.2 Enemies
 
-Two enemy types, both defeatable by jumping on them from above.
+Two enemy types, both defeatable by jumping on them from above. The atlas includes
+many more enemies (barnacles, bees, frogs, ladybugs, mice, snails, worms, saws) — these
+are available for Levels 2 and 3 or future expansion, but we start with two.
 
-**Slime (ground patrol)**
+**Slime (ground patrol)** — `slime_normal_*`
 - Walks left/right on a platform, reverses at edges
-- 128x128 sprite, walk animation (2 frames)
+- 128x128 sprite, walk animation (2 frames: `slime_normal_walk_a`, `_walk_b`)
+- Squished sprite on defeat: `slime_normal_flat`
 - Contact with player sides/bottom = player takes 1 damage
 - Player landing on top = enemy defeated, player bounces upward
 - Uses built-in `patrol_walk` AI behavior
 
 ```lua
+local E = atlas.enemies.regions
 local slime = entity.spawn("enemy", x, y)
+entity.set_sprite(slime, atlas.enemies.sheet)
 entity.set_component(slime, "collider", {
-    width = 100, height = 100,
-    offset_x = 14, offset_y = 28,
+    width = 100, height = 80,
+    offset_x = 14, offset_y = 48,
     layer = "enemy",
     mask = {"tile", "player"}
 })
-animation.add(slime, "walk", { sheet = "sprites/enemies/slime_walk.png", frames = 2, fps = 4, mode = "loop", frame_width = 128, frame_height = 128 })
+-- Walk animation: 2 frames from atlas
+animation.add(slime, "walk", { row = 0, frames = 2, fps = 4, mode = "loop",
+    frame_width = 128, frame_height = 128,
+    offset_x = E.slime_normal_walk_a.x, offset_y = E.slime_normal_walk_a.y })
 animation.play(slime, "walk")
 ```
 
-**Fly (aerial patrol)**
+**Fly (aerial patrol)** — `fly_*`
 - Hovers in a sine-wave pattern
-- 128x128 sprite, fly animation (2 frames)
+- 128x128 sprite, fly animation (2 frames: `fly_a`, `fly_b`)
+- Resting sprite on defeat: `fly_rest`
 - Same stomp/damage rules as slime
 - Uses built-in `patrol_fly` AI behavior
 
+**Available enemies for later levels:**
+
+| Atlas prefix | Type | Movement | Notes |
+|-------------|------|----------|-------|
+| `slime_fire_*` | Ground | `patrol_walk` | Red slime, harder variant |
+| `slime_spike_*` | Ground | `patrol_walk` | Cannot be stomped (spikes on top) |
+| `bee_*` | Aerial | `patrol_fly` | Faster than fly |
+| `ladybug_*` | Ground | `patrol_walk` | Can also fly (`ladybug_fly`) |
+| `snail_*` | Ground | `patrol_walk` | Retreats to shell when hit |
+| `frog_*` | Ground | Jumping | Hops toward player |
+| `mouse_*` | Ground | `patrol_walk` | Fast, low profile |
+| `saw_*` | Hazard | Fixed path | Rotating saw blade, indestructible |
+
 ### 5.3 Collectibles
 
-**Coins**
-- 128x128 sprite, static or simple rotation (2-4 frames)
+**Coins** — `coin_gold` / `coin_gold_side` from the tiles atlas
+- 128x128 sprite, 2-frame animation (face / side for a simple spin effect)
 - Trigger collider (non-solid) — player walks through to collect
 - Increments score counter on HUD
-- Plays coin sound on pickup
+- Plays `sfx_coin.ogg` on pickup
 - Despawns after collection
 
 ```lua
+local T = atlas.tiles.regions
 local coin = entity.create()
 entity.set_position(coin, x, y)
-entity.set_sprite(coin, "tiles/interactive/coin.png")
+entity.set_sprite(coin, atlas.tiles.sheet)
 entity.set_component(coin, "collider", {
     width = 80, height = 80,
     offset_x = 24, offset_y = 24,
@@ -239,21 +387,37 @@ entity.set_component(coin, "collider", {
     layer = "pickup",
     mask = {"player"}
 })
+-- Source rect set to coin_gold from atlas
+-- Animate between coin_gold and coin_gold_side for spin effect
 ```
+
+**Gems** (bonus collectible) — `gem_blue`, `gem_green`, `gem_red`, `gem_yellow`
+- Worth more than coins, placed in hard-to-reach locations
+- Plays `sfx_gem.ogg` on pickup
+- Optional: introduce in Level 2+
 
 ### 5.4 End-of-Level Flag
 
+Atlas provides flags in 4 colors (`flag_green_a`/`_b`, `flag_red_a`/`_b`, etc.) plus
+`flag_off` (lowered). We use `flag_green_a`/`_b` for the goal and `flag_off` at start.
+
 - Placed at the end of each level
+- 2-frame flag animation (waving)
 - Trigger collider — player reaching it completes the level
-- Plays flag sound, brief celebration pause, then loads next level
+- Plays `sfx_magic.ogg`, brief celebration pause, then loads next level
 - On the final level, triggers a "You Win" screen
 
 ### 5.5 Hazards
 
-**Spikes**
+**Spikes** — `spikes` from the tiles atlas
 - 128x128 tile, placed on ground or ceiling
 - Contact = instant 1 damage to player
+- Plays `sfx_hurt.ogg`
 - Static, indestructible
+
+**Lava** — `lava`, `lava_top`, `lava_top_low` from the tiles atlas
+- Instant kill on contact
+- Optional: introduce in Level 3
 
 **Pits**
 - Falling below the level boundary = lose 1 life, respawn at level start
@@ -266,7 +430,8 @@ Three hand-crafted levels of increasing difficulty. Levels are defined as tile d
 
 ### Level Structure
 
-Each level is a Lua file that returns a table:
+Each level is a Lua file that returns a table. Tile names reference atlas regions from
+the tiles sprite sheet:
 
 ```lua
 -- scripts/levels/level_1.lua
@@ -275,11 +440,11 @@ return {
     width = 60,          -- tiles wide
     height = 12,         -- tiles tall
     player_spawn = { x = 2, y = 8 },
-    background = "backgrounds/hills.png",
-    music = "sounds/music.ogg",
+    background = "background_color_hills",  -- atlas region name
+    biome = "grass",                        -- terrain prefix for auto-tiling
 
     -- Tile grid: 2D array indexed [row][col], top-to-bottom
-    -- 0 = air, tile IDs reference content/tiles.json
+    -- 0 = air, 1 = solid terrain (auto-tiled from biome), string = specific tile
     tiles = {
         -- row 1 (top)
         { 0, 0, 0, 0, ... },
@@ -288,7 +453,7 @@ return {
         { 1, 1, 1, 1, ... },
     },
 
-    -- Entity placements
+    -- Entity placements (tile coordinates)
     entities = {
         { type = "coin",  x = 5,  y = 7 },
         { type = "coin",  x = 6,  y = 7 },
@@ -300,31 +465,71 @@ return {
 }
 ```
 
+The `biome` field selects which terrain set to use for auto-tiling. The atlas provides
+6 complete terrain sets, each with 9-piece blocks, horizontal platforms, vertical
+columns, ramps, and cloud/floating platforms:
+
+| Biome | Atlas prefix | Visual | Level use |
+|-------|-------------|--------|-----------|
+| `grass` | `terrain_grass_*` | Green grass on brown earth | Level 1 |
+| `stone` | `terrain_stone_*` | Grey stone bricks | Level 2 |
+| `sand` | `terrain_sand_*` | Sandy desert | (available) |
+| `snow` | `terrain_snow_*` | White snow on grey rock | (available) |
+| `dirt` | `terrain_dirt_*` | Brown dirt/mud | (available) |
+| `purple` | `terrain_purple_*` | Purple alien terrain | Level 3 |
+
+Each terrain set includes these tile shapes for auto-tiling:
+
+```
+block_top_left    block_top     block_top_right
+block_left        block_center  block_right
+block_bottom_left block_bottom  block_bottom_right
+
+horizontal_left   horizontal_middle   horizontal_right
+                  (+ overhang_left, overhang_right)
+
+vertical_top      vertical_middle     vertical_bottom
+
+cloud_left        cloud_middle        cloud_right
+                  (+ cloud, cloud_background)
+
+ramp_short_a      ramp_short_b
+ramp_long_a       ramp_long_b         ramp_long_c
+
+block             (standalone single tile)
+```
+
 ### Level 1: "Green Hills"
 
+- **Biome:** `grass` terrain, `background_color_hills` background
 - Teaches: moving, jumping, collecting coins
 - Flat ground with simple gaps and low platforms
+- Cloud platforms (`terrain_grass_cloud_*`) for floating ledges
 - A few coins placed to guide the player forward
+- Decorations: `bush`, `grass`, `fence`, `sign_right`
 - One slime enemy near the middle
 - 60 tiles wide (~8 screens of scrolling)
 - Forgiving layout — hard to die
 
-### Level 2: "Underground"
+### Level 2: "Stone Cavern"
 
+- **Biome:** `stone` terrain, `background_solid_dirt` background
 - Teaches: timing, enemy avoidance, vertical platforming
 - Mix of ground and elevated platforms
 - Spikes introduced as a hazard
+- Torches (`torch_on_a`/`_b`) for decoration (animated 2-frame)
 - Multiple slimes and one fly enemy
 - Some coins on hard-to-reach platforms (risk/reward)
 - 80 tiles wide
 
-### Level 3: "Sky Fortress"
+### Level 3: "Purple Skylands"
 
+- **Biome:** `purple` terrain, `background_fade_mushrooms` background
 - Teaches: precision jumping, combining skills
-- Floating platforms over pits
-- Flies patrolling between platforms
+- Floating cloud platforms over pits
+- Flies and bees patrolling between platforms
 - Spikes on ceilings above narrow passages
-- Coins rewarding exploration of optional paths
+- Coins and gems rewarding exploration of optional paths
 - 100 tiles wide
 - Flag placement feels earned
 
@@ -332,24 +537,36 @@ return {
 
 ## 7. HUD
 
-Minimal overlay showing essential information:
+Minimal overlay using sprites from the tiles atlas. The atlas provides dedicated HUD
+elements:
+
+| Atlas name | Use |
+|------------|-----|
+| `hud_heart` | Full heart (life) |
+| `hud_heart_half` | Half heart |
+| `hud_heart_empty` | Lost heart |
+| `hud_coin` | Coin icon for score display |
+| `hud_player_beige` | Player portrait |
+| `hud_character_0` .. `hud_character_9` | Digit sprites for score |
+| `hud_character_multiply` | "x" symbol |
+
+Layout:
 
 ```
-┌──────────────────────────────────────┐
-│ ♥ ♥ ♥          Level 1       🪙 x 12 │
-│                                      │
-│                                      │
-│            (game world)              │
-│                                      │
-│                                      │
-└──────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ [portrait] ♥ ♥ ♥      Level 1      [coin] x 12 │
+│                                              │
+│                 (game world)                 │
+│                                              │
+└──────────────────────────────────────────────┘
 ```
 
-| Element | Position | Content |
+| Element | Position | Sprites |
 |---------|----------|---------|
-| **Lives** | Top-left | Heart icons, filled = alive, empty = lost |
-| **Level name** | Top-center | Current level name |
-| **Coin count** | Top-right | Coin icon + count |
+| **Player portrait** | Top-left | `hud_player_beige` |
+| **Lives** | Top-left (after portrait) | `hud_heart` / `hud_heart_empty` |
+| **Level name** | Top-center | Engine text rendering |
+| **Coin count** | Top-right | `hud_coin` + `hud_character_*` digit sprites |
 
 Implementation using the engine's UI system:
 
@@ -359,17 +576,18 @@ ui.register("hud", function()
         width = "100%", height = "auto",
         flex_direction = "row",
         justify_content = "space_between",
+        align_items = "center",
         padding = { top = 16, left = 16, right = 16 }
     }}, {
-        -- Lives (left)
-        ui.Box({ id = "lives_row", style = { flex_direction = "row", gap = 8 }}, {
-            -- heart images generated dynamically
+        -- Lives (left): portrait + hearts
+        ui.Box({ id = "lives_row", style = { flex_direction = "row", gap = 8, align_items = "center" }}, {
+            -- hud_player_beige image + hud_heart images generated dynamically
         }),
         -- Level name (center)
         ui.Text({ id = "level_name", text = "Level 1", style = {
             font_size = 24, text_color = "#FFFFFFFF"
         }}),
-        -- Coins (right)
+        -- Coins (right): coin icon + digit sprites or text
         ui.Box({ id = "coin_display", style = { flex_direction = "row", gap = 8, align_items = "center" }}, {
             ui.Image({ id = "coin_icon", style = { width = 32, height = 32 }}),
             ui.Text({ id = "coin_text", text = "x 0", style = {
@@ -412,27 +630,35 @@ Beyond the HUD, three full-screen UI overlays:
 
 ## 9. Audio
 
-Minimal sound design using the Kenney pack sounds plus any additional CC0 sounds needed.
+Sound effects from the Kenney pack. No background music is included — we will either
+source a CC0 music loop separately or ship without music in v1.
 
-| Sound | Trigger | Notes |
-|-------|---------|-------|
-| **Jump** | Player jumps | Short, snappy |
-| **Coin** | Coin collected | Bright chime |
-| **Stomp** | Enemy defeated | Satisfying pop |
-| **Hurt** | Player takes damage | Brief negative tone |
-| **Flag** | Level completed | Celebratory jingle |
-| **Music** | Background loop | Light, upbeat, per-level or shared |
+| Sound ID | File | Trigger | Volume |
+|----------|------|---------|--------|
+| `jump` | `reference/Sounds/sfx_jump.ogg` | Player jumps | 0.7 |
+| `jump_high` | `reference/Sounds/sfx_jump-high.ogg` | Stomp bounce (enemy defeated) | 0.7 |
+| `coin` | `reference/Sounds/sfx_coin.ogg` | Coin collected | 0.8 |
+| `gem` | `reference/Sounds/sfx_gem.ogg` | Gem collected | 0.8 |
+| `hurt` | `reference/Sounds/sfx_hurt.ogg` | Player takes damage | 0.6 |
+| `stomp` | `reference/Sounds/sfx_disappear.ogg` | Enemy defeated (poof) | 0.8 |
+| `bump` | `reference/Sounds/sfx_bump.ogg` | Hit a wall or ? block | 0.6 |
+| `flag` | `reference/Sounds/sfx_magic.ogg` | Level completed | 0.9 |
+| `select` | `reference/Sounds/sfx_select.ogg` | Menu selection | 0.7 |
 
 ```lua
 -- Registration
-audio.registerSound("jump",  "sounds/jump.ogg",  { volume = 0.7 })
-audio.registerSound("coin",  "sounds/coin.ogg",  { volume = 0.8 })
-audio.registerSound("stomp", "sounds/stomp.ogg", { volume = 0.8 })
-audio.registerSound("hurt",  "sounds/hurt.ogg",  { volume = 0.6 })
-audio.registerSound("flag",  "sounds/flag.ogg",  { volume = 0.9 })
+audio.registerSound("jump",      "reference/Sounds/sfx_jump.ogg",       { volume = 0.7 })
+audio.registerSound("jump_high", "reference/Sounds/sfx_jump-high.ogg",  { volume = 0.7 })
+audio.registerSound("coin",      "reference/Sounds/sfx_coin.ogg",       { volume = 0.8 })
+audio.registerSound("gem",       "reference/Sounds/sfx_gem.ogg",        { volume = 0.8 })
+audio.registerSound("hurt",      "reference/Sounds/sfx_hurt.ogg",       { volume = 0.6 })
+audio.registerSound("stomp",     "reference/Sounds/sfx_disappear.ogg",  { volume = 0.8 })
+audio.registerSound("bump",      "reference/Sounds/sfx_bump.ogg",       { volume = 0.6 })
+audio.registerSound("flag",      "reference/Sounds/sfx_magic.ogg",      { volume = 0.9 })
+audio.registerSound("select",    "reference/Sounds/sfx_select.ogg",     { volume = 0.7 })
 
--- Background music
-audio.playMusic("sounds/music.ogg", { fade_in = 1.0, loop = true })
+-- Background music (TODO: source a CC0 loop)
+-- audio.playMusic("reference/Sounds/music.ogg", { fade_in = 1.0, loop = true })
 ```
 
 ---
@@ -563,8 +789,30 @@ examples/simple-platformer/
 ├── mod.json                     # Mod manifest
 ├── run.sh                       # Linux/macOS: symlink into mods/ and launch engine
 ├── run.bat                      # Windows: same as run.sh
+├── reference/                   # Kenney asset pack (CC0) — used as-is
+│   ├── Spritesheets/
+│   │   ├── spritesheet-characters-double.png   # 5 characters x 9 poses (256x256)
+│   │   ├── spritesheet-characters-double.xml   # Atlas: 45 named regions
+│   │   ├── spritesheet-enemies-double.png      # 15+ enemy types (128x128)
+│   │   ├── spritesheet-enemies-double.xml      # Atlas: 62 named regions
+│   │   ├── spritesheet-tiles-double.png        # Terrain, items, HUD (128x128)
+│   │   ├── spritesheet-tiles-double.xml        # Atlas: 316 named regions
+│   │   ├── spritesheet-backgrounds-double.png  # Background tiles (512x512)
+│   │   └── spritesheet-backgrounds-double.xml  # Atlas: 15 named regions
+│   └── Sounds/
+│       ├── sfx_bump.ogg
+│       ├── sfx_coin.ogg
+│       ├── sfx_disappear.ogg
+│       ├── sfx_gem.ogg
+│       ├── sfx_hurt.ogg
+│       ├── sfx_jump-high.ogg
+│       ├── sfx_jump.ogg
+│       ├── sfx_magic.ogg
+│       ├── sfx_select.ogg
+│       └── sfx_throw.ogg
 ├── scripts/
 │   ├── init.lua                 # Entry point — config, content loading, event wiring
+│   ├── atlas.lua                # Sprite sheet atlas data (generated from XMLs)
 │   ├── player.lua               # Player spawning, movement, animation state machine
 │   ├── enemies.lua              # Enemy spawning, stomp detection
 │   ├── collectibles.lua         # Coin and flag behavior
@@ -572,27 +820,10 @@ examples/simple-platformer/
 │   ├── screens.lua              # Title, pause, game over, victory screens
 │   └── levels/
 │       ├── level_1.lua          # "Green Hills" tile data and entity placements
-│       ├── level_2.lua          # "Underground" tile data and entity placements
-│       └── level_3.lua          # "Sky Fortress" tile data and entity placements
-├── content/
-│   └── tiles.json               # Tile definitions (terrain, hazards)
-└── assets/
-    ├── sprites/
-    │   ├── player/              # Player character sprite sheets
-    │   └── enemies/             # Enemy sprite sheets
-    ├── tiles/
-    │   ├── terrain/             # Ground, platform, wall tiles
-    │   ├── decoration/          # Visual-only tiles (bushes, signs)
-    │   └── interactive/         # Coins, flag, spikes, spring
-    ├── backgrounds/             # Parallax background layers
-    ├── hud/                     # Heart icons, coin icon
-    └── sounds/
-        ├── jump.ogg
-        ├── coin.ogg
-        ├── stomp.ogg
-        ├── hurt.ogg
-        ├── flag.ogg
-        └── music.ogg
+│       ├── level_2.lua          # "Stone Cavern" tile data and entity placements
+│       └── level_3.lua          # "Purple Skylands" tile data and entity placements
+└── content/
+    └── tiles.json               # Tile definitions (terrain, hazards)
 ```
 
 ---
@@ -623,33 +854,37 @@ Suggested build order, where each step produces a testable result:
 | Step | Deliverable | What you can test |
 |------|-------------|-------------------|
 | 1 | `mod.json` + `init.lua` with physics/camera/input setup | Engine loads the mod, empty world with correct physics |
-| 2 | `content/tiles.json` + terrain tiles | Place tiles, see them render |
-| 3 | `scripts/player.lua` — spawn, movement, animation | Run and jump on tiles |
-| 4 | `scripts/levels/level_1.lua` — first level layout | Play through a real level |
-| 5 | `scripts/collectibles.lua` — coins and flag | Collect coins, complete level |
-| 6 | `scripts/enemies.lua` — slime and fly | Enemies patrol and can be stomped |
-| 7 | `scripts/hud.lua` — lives, coins, level name | See score and health |
-| 8 | `scripts/screens.lua` — title, pause, game over, victory | Full game flow |
-| 9 | Levels 2 and 3 | Complete game with progression |
-| 10 | Audio — sounds and music | Polish pass |
-| 11 | Steam Deck testing | Verify gamepad, scaling, glyphs |
+| 2 | `scripts/atlas.lua` — sprite sheet atlas data from XMLs | Atlas lookups work, log a few region names to verify |
+| 3 | `content/tiles.json` + terrain tiles using atlas regions | Place tiles, see them render from sprite sheets |
+| 4 | `scripts/player.lua` — spawn, movement, animation from atlas | Run and jump on tiles with character sprite |
+| 5 | `scripts/levels/level_1.lua` — first level layout | Play through a real level with auto-tiled terrain |
+| 6 | `scripts/collectibles.lua` — coins and flag | Collect coins, complete level |
+| 7 | `scripts/enemies.lua` — slime and fly from atlas | Enemies patrol and can be stomped |
+| 8 | `scripts/hud.lua` — lives, coins, level name using HUD sprites | See score and health with atlas heart/coin icons |
+| 9 | `scripts/screens.lua` — title, pause, game over, victory | Full game flow |
+| 10 | Levels 2 and 3 (stone, purple biomes) | Complete game with progression |
+| 11 | Audio — sounds | Polish pass with all SFX |
+| 12 | Steam Deck testing | Verify gamepad, scaling, glyphs |
 
 ---
 
 ## 15. Tutorial Guide Outline
 
-The accompanying tutorial (to be written after implementation) will follow the implementation order above. Each chapter corresponds to one step:
+The accompanying tutorial (to be written after implementation) will follow the
+implementation order above. Each chapter corresponds to one step:
 
 1. **Setting Up a Mod** — mod.json, init.lua, running the engine
-2. **Building a World** — tile definitions, placing terrain
-3. **The Player** — entities, components, movement, animation
-4. **Designing Levels** — level data format, loading, transitions
-5. **Collectibles and Goals** — trigger colliders, events, scoring
-6. **Enemies** — AI behaviors, collision response, stomp mechanics
-7. **Heads-Up Display** — UI system, dynamic updates
-8. **Game Flow** — screens, state management, pause/resume
-9. **More Levels** — difficulty curve, introducing new elements
-10. **Sound and Music** — audio registration, playback, events
-11. **Steam Deck** — testing, input glyphs, what the engine handles for you
+2. **Working with Sprite Sheets** — atlas.lua, XML format, sub-texture lookups
+3. **Building a World** — tile definitions, terrain biomes, auto-tiling
+4. **The Player** — entities, components, movement, animation from atlas
+5. **Designing Levels** — level data format, loading, transitions
+6. **Collectibles and Goals** — trigger colliders, events, scoring
+7. **Enemies** — AI behaviors, collision response, stomp mechanics
+8. **Heads-Up Display** — UI system, HUD sprites, dynamic updates
+9. **Game Flow** — screens, state management, pause/resume
+10. **More Levels** — new biomes, difficulty curve, introducing new elements
+11. **Sound Effects** — audio registration, playback, event binding
+12. **Steam Deck** — testing, input glyphs, what the engine handles for you
 
-Each chapter will include the complete source code for that step, explanation of every API call used, and a "try it yourself" exercise.
+Each chapter will include the complete source code for that step, explanation of every
+API call used, and a "try it yourself" exercise.
