@@ -604,8 +604,14 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
     // =========================================================================
     auto animApi = lua.create_named_table("animation");
 
-    // animation.add(entityId, clipName, { sheet = "player.png", row = 0, frames = 4, fps = 6,
-    //                                      mode = "loop", frame_width = 16, frame_height = 16 })
+    // animation.add(entityId, clipName, opts)
+    //
+    // Two modes:
+    //   Grid mode (row-based): { row = 0, frames = 4, fps = 6, mode = "loop",
+    //     frame_width = 16, frame_height = 16, start_col = 0, padding = 0 }
+    //
+    //   Rect mode (atlas): { fps = 6, mode = "loop",
+    //     rects = { {x,y,w,h}, {x,y,w,h}, ... } }
     animApi["add"] = [&engine](uint32_t entityId, const std::string& clipName, sol::table opts) {
         auto& registry = engine.getRegistry();
         Entity entity = static_cast<Entity>(entityId);
@@ -620,11 +626,38 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
         }
         auto& ctrl = registry.get<AnimationController>(entity);
 
-        int row = opts.get_or("row", 0);
-        int frameCount = opts.get_or("frames", 1);
         float fps = opts.get_or("fps", 10.0f);
         std::string modeStr = opts.get_or<std::string>("mode", "loop");
         PlaybackMode mode = parsePlaybackMode(modeStr);
+
+        // Check for explicit rects array (atlas mode)
+        sol::optional<sol::table> rectsOpt = opts["rects"];
+        if (rectsOpt) {
+            AnimationClip clip;
+            clip.fps = fps;
+            clip.mode = mode;
+            sol::table rects = *rectsOpt;
+            for (size_t i = 1; i <= rects.size(); ++i) {
+                sol::table r = rects[i];
+                float x = r.get_or("x", 0.0f);
+                float y = r.get_or("y", 0.0f);
+                float w = r.get_or("w", 0.0f);
+                float h = r.get_or("h", 0.0f);
+                clip.frames.push_back(Rect(x, y, w, h));
+            }
+            if (clip.frames.empty()) {
+                MOD_LOG_WARN("animation.add: empty rects array for clip '{}'", clipName);
+                return;
+            }
+            ctrl.addClip(clipName, std::move(clip));
+            return;
+        }
+
+        // Grid mode (row-based sprite sheet)
+        int row = opts.get_or("row", 0);
+        int frameCount = opts.get_or("frames", 1);
+        int startCol = opts.get_or("start_col", 0);
+        int padding = opts.get_or("padding", 0);
 
         // Frame dimensions: explicit or derived from texture
         int frameWidth = opts.get_or("frame_width", 0);
@@ -652,7 +685,8 @@ void bindGameplayAPI(sol::state& lua, Engine& engine,
             return;
         }
 
-        ctrl.addClipFromSheet(clipName, row, frameCount, frameWidth, frameHeight, fps, mode);
+        ctrl.addClipFromSheet(clipName, row, frameCount, frameWidth, frameHeight, fps, mode,
+                              startCol, padding);
     };
 
     // animation.play(entityId, clipName)

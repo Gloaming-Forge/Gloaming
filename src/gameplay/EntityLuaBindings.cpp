@@ -113,6 +113,24 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
         }
     };
 
+    // entity.set_source_rect(entityId, x, y, w, h)
+    // Sets the sprite's source rectangle for atlas-based rendering.
+    entityApi["set_source_rect"] = [&engine](uint32_t entityId,
+            float x, float y, float w, float h) {
+        auto& registry = engine.getRegistry();
+        Entity entity = static_cast<Entity>(entityId);
+        if (!registry.valid(entity)) {
+            MOD_LOG_WARN("entity.set_source_rect: invalid entity {}", entityId);
+            return;
+        }
+        if (!registry.has<Sprite>(entity)) {
+            MOD_LOG_WARN("entity.set_source_rect: entity {} has no sprite", entityId);
+            return;
+        }
+        auto& sprite = registry.get<Sprite>(entity);
+        sprite.sourceRect = Rect(x, y, w, h);
+    };
+
     // entity.set_component(entityId, componentName, data)
     entityApi["set_component"] = [&engine, &collisionLayers](
             uint32_t entityId, const std::string& name, sol::table data) {
@@ -210,6 +228,28 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
                 tr.scale = Vec2(scaleX, scaleY);
             } else {
                 registry.add<Transform>(entity, Vec2(x, y), rotation, Vec2(scaleX, scaleY));
+            }
+        } else if (name == "sprite") {
+            if (registry.has<Sprite>(entity)) {
+                auto& s = registry.get<Sprite>(entity);
+                sol::optional<bool> vis = data.get<sol::optional<bool>>("visible");
+                if (vis) s.visible = *vis;
+                sol::optional<int> layer = data.get<sol::optional<int>>("layer");
+                if (layer) s.layer = *layer;
+                sol::optional<bool> fx = data.get<sol::optional<bool>>("flip_x");
+                if (fx) s.flipX = *fx;
+                sol::optional<bool> fy = data.get<sol::optional<bool>>("flip_y");
+                if (fy) s.flipY = *fy;
+                sol::optional<sol::table> rect = data.get<sol::optional<sol::table>>("source_rect");
+                if (rect) {
+                    s.sourceRect = Rect(
+                        rect->get_or("x", 0.0f),
+                        rect->get_or("y", 0.0f),
+                        rect->get_or("w", 0.0f),
+                        rect->get_or("h", 0.0f));
+                }
+            } else {
+                MOD_LOG_WARN("entity.set_component('sprite'): entity {} has no sprite - call entity.set_sprite() first", entityId);
             }
         } else {
             MOD_LOG_WARN("entity.set_component: unknown component '{}'", name);

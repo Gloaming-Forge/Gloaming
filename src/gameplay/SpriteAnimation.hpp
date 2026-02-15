@@ -74,18 +74,23 @@ struct AnimationController {
     /// @param frameHeight Height of one frame in pixels
     /// @param fps         Playback speed
     /// @param mode        Playback mode
+    /// @param startCol    Starting column (0-based, default 0)
+    /// @param padding     Pixel gap between frames in the sheet (default 0)
     void addClipFromSheet(const std::string& name, int row, int frameCount,
                           int frameWidth, int frameHeight, float fps,
-                          PlaybackMode mode = PlaybackMode::Loop) {
+                          PlaybackMode mode = PlaybackMode::Loop,
+                          int startCol = 0, int padding = 0) {
         AnimationClip clip;
         clip.fps = fps;
         clip.mode = mode;
         clip.frames.reserve(frameCount);
 
+        const int strideX = frameWidth + padding;
+        const int strideY = frameHeight + padding;
         for (int i = 0; i < frameCount; ++i) {
             clip.frames.push_back(Rect(
-                static_cast<float>(i * frameWidth),
-                static_cast<float>(row * frameHeight),
+                static_cast<float>((startCol + i) * strideX),
+                static_cast<float>(row * strideY),
                 static_cast<float>(frameWidth),
                 static_cast<float>(frameHeight)
             ));

@@ -1,0 +1,14 @@
+{
+    "id": "simple-platformer",
+    "name": "Simple Platformer",
+    "version": "1.0.0",
+    "authors": ["Gloaming-Forge"],
+    "description": "A simple platformer example — proof of concept and tutorial reference for the Gloaming engine.",
+    "entryPoint": "scripts/init.lua",
+    "provides": {
+        "content": true,
+        "worldgen": false,
+        "ui": true,
+        "audio": true
+    }
+}
