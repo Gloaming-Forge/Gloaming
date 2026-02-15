@@ -6,6 +6,8 @@
 #include <functional>
 #include <algorithm>
 #include <any>
+#include <stdexcept>
+#include "engine/Log.hpp"
 
 namespace gloaming {
 
@@ -95,8 +97,14 @@ public:
         // Copy handlers to allow safe modification during iteration
         auto handlers = it->second;
         for (const auto& handler : handlers) {
-            if (handler.callback(data)) {
-                return true;  // Event cancelled
+            try {
+                if (handler.callback(data)) {
+                    return true;  // Event cancelled
+                }
+            } catch (const std::exception& e) {
+                LOG_ERROR("EventBus: handler exception for '{}': {}", eventName, e.what());
+            } catch (...) {
+                LOG_ERROR("EventBus: unknown handler exception for '{}'", eventName);
             }
         }
         return false;

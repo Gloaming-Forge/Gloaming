@@ -182,15 +182,22 @@ void ModLoader::postInitMods() {
         if (mod.modTable.valid()) {
             sol::optional<sol::function> postInit = mod.modTable["postInit"];
             if (postInit) {
-                auto result = (*postInit)();
-                if (!result.valid()) {
-                    sol::error err = result;
-                    MOD_LOG_WARN("[{}] postInit error: {}", modId, err.what());
+                try {
+                    auto result = (*postInit)();
+                    if (!result.valid()) {
+                        sol::error err = result;
+                        MOD_LOG_WARN("[{}] postInit error: {}", modId, err.what());
+                        mod.state = ModState::Failed;
+                        mod.errorMessage = "postInit error: " + std::string(err.what());
+                        continue;
+                    } else {
+                        MOD_LOG_DEBUG("[{}] postInit completed", modId);
+                    }
+                } catch (const std::exception& e) {
+                    MOD_LOG_WARN("[{}] postInit exception: {}", modId, e.what());
                     mod.state = ModState::Failed;
-                    mod.errorMessage = "postInit error: " + std::string(err.what());
+                    mod.errorMessage = "postInit exception: " + std::string(e.what());
                     continue;
-                } else {
-                    MOD_LOG_DEBUG("[{}] postInit completed", modId);
                 }
             }
         }
@@ -210,10 +217,14 @@ void ModLoader::shutdown() {
             if (mod.modTable.valid()) {
                 sol::optional<sol::function> shutdownFn = mod.modTable["shutdown"];
                 if (shutdownFn) {
-                    auto result = (*shutdownFn)();
-                    if (!result.valid()) {
-                        sol::error err = result;
-                        MOD_LOG_WARN("[{}] shutdown error: {}", *it, err.what());
+                    try {
+                        auto result = (*shutdownFn)();
+                        if (!result.valid()) {
+                            sol::error err = result;
+                            MOD_LOG_WARN("[{}] shutdown error: {}", *it, err.what());
+                        }
+                    } catch (const std::exception& e) {
+                        MOD_LOG_WARN("[{}] shutdown exception: {}", *it, e.what());
                     }
                 }
             }

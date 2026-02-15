@@ -56,11 +56,12 @@ local collectibles_mod = require("scripts.collectibles")
 local hud_mod          = require("scripts.hud")
 local screens_mod      = require("scripts.screens")
 
--- ─── Level files ─────────────────────────────────────────────────────────────
-local level_files = {
-    "scripts.levels.level_1",
-    "scripts.levels.level_2",
-    "scripts.levels.level_3",
+-- ─── Level data ──────────────────────────────────────────────────────────────
+-- Load all level definitions upfront (they are static data tables).
+local levels = {
+    require("scripts.levels.level_1"),
+    require("scripts.levels.level_2"),
+    require("scripts.levels.level_3"),
 }
 
 -- ─── Hitbox constants (match collider definitions in sub-scripts) ────────────
@@ -164,10 +165,7 @@ local function load_level(level_num)
     clear_level()
 
     state.current_level = level_num
-
-    -- Clear require cache so levels reload cleanly
-    package.loaded[level_files[level_num]] = nil
-    local level_data = require(level_files[level_num])
+    local level_data = levels[level_num]
 
     state.level_height = level_data.height * 128
 
@@ -275,8 +273,7 @@ events.on("player_fell", function()
         screens_mod.show_game_over(state.coins)
     else
         -- Respawn at level start
-        package.loaded[level_files[state.current_level]] = nil
-        local level_data = require(level_files[state.current_level])
+        local level_data = levels[state.current_level]
         local sx = (level_data.player_spawn.x - 1) * 128
         local sy = (level_data.player_spawn.y - 1) * 128
         entity.set_position(state.player, sx, sy)
