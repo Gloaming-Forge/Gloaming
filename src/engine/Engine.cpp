@@ -281,6 +281,9 @@ bool Engine::init(const std::string& configPath) {
         // Particle system (Stage 17) — runs in Update phase; rendering is called separately
         m_particleSystem = m_systemScheduler.addSystem<ParticleSystem>(SystemPhase::Update);
 
+        // Sprite render system — draws entity sprites during the Render phase
+        m_systemScheduler.addSystem<SpriteRenderSystem>(SystemPhase::Render);
+
         // Scene, Timer & Save systems (Stage 16)
         m_sceneManager.init(*this);
         // TimerSystem and SaveSystem don't need engine-level init() — they're configured later
