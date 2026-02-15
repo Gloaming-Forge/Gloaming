@@ -7,6 +7,7 @@
 #include "ui/UISystem.hpp"
 #include "ui/UIWidgets.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <cmath>
@@ -268,9 +269,17 @@ void LuaBindings::bindContentAPI() {
 void LuaBindings::bindEventsAPI() {
     auto events = m_lua.create_named_table("events");
 
-    // events.on(eventName, handler) — subscribe to an event
+    // events.on(eventName, handler) — subscribe to an event.
+    // The "update" event is special: handlers are called directly each frame
+    // with dt (float) as the argument instead of going through the EventBus.
     events["on"] = [this](const std::string& eventName, sol::function handler,
                           sol::optional<int> priority) -> uint64_t {
+        if (eventName == "update") {
+            uint64_t id = m_nextUpdateId++;
+            m_updateCallbacks.push_back({id, sol::protected_function(handler)});
+            return id;
+        }
+
         int prio = priority.value_or(0);
         return m_eventBus->on(eventName, [handler](const EventData& data) -> bool {
             // Convert EventData to a Lua table for the handler
@@ -294,6 +303,13 @@ void LuaBindings::bindEventsAPI() {
 
     // events.off(handlerId) — unsubscribe
     events["off"] = [this](uint64_t id) {
+        // Check update callbacks first
+        auto it = std::remove_if(m_updateCallbacks.begin(), m_updateCallbacks.end(),
+            [id](const UpdateHandler& h) { return h.id == id; });
+        if (it != m_updateCallbacks.end()) {
+            m_updateCallbacks.erase(it, m_updateCallbacks.end());
+            return;
+        }
         m_eventBus->off(id);
     };
 
@@ -1194,6 +1210,20 @@ bool LuaBindings::executeString(const std::string& code, sol::environment& env,
     }
 
     return true;
+}
+
+void LuaBindings::tickUpdate(float dt) {
+    for (auto& handler : m_updateCallbacks) {
+        try {
+            sol::protected_function_result result = handler.callback(dt);
+            if (!result.valid()) {
+                sol::error err = result;
+                MOD_LOG_ERROR("Update handler error: {}", err.what());
+            }
+        } catch (const std::exception& e) {
+            MOD_LOG_ERROR("Update handler exception: {}", e.what());
+        }
+    }
 }
 
 } // namespace gloaming

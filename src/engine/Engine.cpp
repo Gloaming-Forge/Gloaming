@@ -670,6 +670,11 @@ void Engine::update(double dt) {
     // Run ECS update systems
     m_systemScheduler.update(dtFloat);
 
+    // Tick Lua per-frame update callbacks (events.on("update", fn))
+    if (m_modLoader.getLuaBindings().isInitialized()) {
+        m_modLoader.getLuaBindings().tickUpdate(dtFloat);
+    }
+
     // Update UI system (processes input, rebuilds dynamic UIs, computes layout)
     m_uiSystem.update(dtFloat);
 

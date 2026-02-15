@@ -3,6 +3,10 @@
 #include "engine/ResourceManager.hpp"
 #include "engine/Engine.hpp"
 #include "engine/Log.hpp"
+#include "engine/Input.hpp"
+#include "engine/Gamepad.hpp"
+#include "engine/InputDeviceTracker.hpp"
+#include "gameplay/InputActions.hpp"
 #include "ecs/Components.hpp"
 
 #include <cstdio>
@@ -81,7 +85,10 @@ void DiagnosticOverlay::renderFull(IRenderer* renderer, const Profiler& profiler
     // Calculate panel height based on content
     const auto& zones = profiler.getAllZoneStats();
     int zoneLines = static_cast<int>(zones.size());
-    float panelHeight = kLineHeight * (14 + zoneLines) + kGraphHeight + kPadding * 4;
+    // +12 extra lines for input diagnostics section (device, keys, arrows, mouse,
+    // gamepad buttons, dpad/sticks, triggers, actions ~2-4 lines)
+    int inputLines = engine.getGamepad().isConnected() ? 10 : 8;
+    float panelHeight = kLineHeight * (14 + zoneLines + inputLines) + kGraphHeight + kPadding * 4;
 
     // Background panel
     renderer->drawRectangle(
@@ -197,6 +204,154 @@ void DiagnosticOverlay::renderFull(IRenderer* renderer, const Profiler& profiler
                  engine.getTweenSystem().activeCount());
         y = drawLine(renderer, x, y, buf, Color(255, 200, 150, 255));
     }
+
+    // ---- Input ----
+    y = renderInputSection(renderer, x, y, engine);
+}
+
+// =============================================================================
+// Input diagnostics
+// =============================================================================
+
+float DiagnosticOverlay::renderInputSection(IRenderer* renderer, float x, float y,
+                                             Engine& engine) {
+    const Color headerColor(255, 180, 100, 255);
+    const Color labelColor(180, 180, 180, 255);
+    const Color activeColor = Color::Green();
+    const Color inactiveColor(100, 100, 100, 255);
+
+    y = drawLine(renderer, x, y, "-- Input --", headerColor);
+
+    // Active device
+    {
+        auto device = engine.getInputDeviceTracker().getActiveDevice();
+        const char* deviceName = (device == InputDevice::Gamepad) ? "Gamepad" : "Keyboard/Mouse";
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Active device: %s", deviceName);
+        y = drawLine(renderer, x, y, buf, labelColor);
+    }
+
+    // Keyboard — show commonly-used keys in a compact row
+    {
+        auto& input = engine.getInput();
+        char buf[192];
+        snprintf(buf, sizeof(buf),
+                 "Keys: %s%s%s%s %s %s %s %s",
+                 input.isKeyDown(Key::W) ? "W" : ".",
+                 input.isKeyDown(Key::A) ? "A" : ".",
+                 input.isKeyDown(Key::S) ? "S" : ".",
+                 input.isKeyDown(Key::D) ? "D" : ".",
+                 input.isKeyDown(Key::Space)  ? "Space" : ".....",
+                 input.isKeyDown(Key::Escape) ? "Esc" : "...",
+                 input.isKeyDown(Key::Z)      ? "Z" : ".",
+                 input.isKeyDown(Key::E)      ? "E" : ".");
+        y = drawLine(renderer, x, y, buf, labelColor);
+
+        snprintf(buf, sizeof(buf),
+                 "Arrows: %s %s %s %s",
+                 input.isKeyDown(Key::Up)    ? "Up" : "..",
+                 input.isKeyDown(Key::Down)  ? "Dn" : "..",
+                 input.isKeyDown(Key::Left)  ? "Lt" : "..",
+                 input.isKeyDown(Key::Right) ? "Rt" : "..");
+        y = drawLine(renderer, x, y, buf, labelColor);
+    }
+
+    // Mouse
+    {
+        auto& input = engine.getInput();
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Mouse: (%.0f, %.0f) L:%s R:%s M:%s",
+                 input.getMouseX(), input.getMouseY(),
+                 input.isMouseButtonDown(MouseButton::Left)   ? "Y" : ".",
+                 input.isMouseButtonDown(MouseButton::Right)  ? "Y" : ".",
+                 input.isMouseButtonDown(MouseButton::Middle) ? "Y" : ".");
+        y = drawLine(renderer, x, y, buf, labelColor);
+    }
+
+    // Gamepad
+    {
+        auto& gamepad = engine.getGamepad();
+        if (gamepad.isConnected()) {
+            Vec2 ls = gamepad.getLeftStick();
+            Vec2 rs = gamepad.getRightStick();
+            float lt = gamepad.getLeftTrigger();
+            float rt = gamepad.getRightTrigger();
+
+            char buf[192];
+            snprintf(buf, sizeof(buf),
+                     "Pad: A:%s B:%s X:%s Y:%s LB:%s RB:%s St:%s Sel:%s",
+                     gamepad.isButtonDown(GamepadButton::FaceDown)   ? "Y" : ".",
+                     gamepad.isButtonDown(GamepadButton::FaceRight)  ? "Y" : ".",
+                     gamepad.isButtonDown(GamepadButton::FaceLeft)   ? "Y" : ".",
+                     gamepad.isButtonDown(GamepadButton::FaceUp)     ? "Y" : ".",
+                     gamepad.isButtonDown(GamepadButton::LeftBumper)  ? "Y" : ".",
+                     gamepad.isButtonDown(GamepadButton::RightBumper) ? "Y" : ".",
+                     gamepad.isButtonDown(GamepadButton::Start)      ? "Y" : ".",
+                     gamepad.isButtonDown(GamepadButton::Select)     ? "Y" : ".");
+            y = drawLine(renderer, x, y, buf, labelColor);
+
+            snprintf(buf, sizeof(buf),
+                     "DPad: %s%s%s%s | LS:(%.2f,%.2f) RS:(%.2f,%.2f)",
+                     gamepad.isButtonDown(GamepadButton::DpadUp)    ? "U" : ".",
+                     gamepad.isButtonDown(GamepadButton::DpadDown)  ? "D" : ".",
+                     gamepad.isButtonDown(GamepadButton::DpadLeft)  ? "L" : ".",
+                     gamepad.isButtonDown(GamepadButton::DpadRight) ? "R" : ".",
+                     ls.x, ls.y, rs.x, rs.y);
+            y = drawLine(renderer, x, y, buf, labelColor);
+
+            snprintf(buf, sizeof(buf), "Triggers: L:%.2f R:%.2f | Deadzone: %.2f",
+                     lt, rt, gamepad.getDeadzone());
+            y = drawLine(renderer, x, y, buf, labelColor);
+        } else {
+            y = drawLine(renderer, x, y, "Gamepad: not connected", inactiveColor);
+        }
+    }
+
+    // Input actions — show registered action states
+    {
+        auto& actions = engine.getInputActions();
+        auto& input = engine.getInput();
+        auto& gamepad = engine.getGamepad();
+
+        auto actionNames = actions.getActionNames();
+        if (!actionNames.empty()) {
+            // Sort for consistent display order
+            std::sort(actionNames.begin(), actionNames.end());
+
+            // Build a compact status line of all actions
+            std::string line = "Actions:";
+            for (const auto& name : actionNames) {
+                bool down = actions.isActionDown(name, input, gamepad);
+                line += " ";
+                line += name;
+                line += ":";
+                line += down ? "ON" : "..";
+            }
+
+            // Split into lines if too wide (max ~55 chars per line)
+            const size_t maxLineLen = 55;
+            size_t pos = 0;
+            while (pos < line.size()) {
+                size_t end = pos + maxLineLen;
+                if (end < line.size()) {
+                    // Find last space before the cutoff
+                    size_t space = line.rfind(' ', end);
+                    if (space > pos) end = space;
+                }
+                std::string segment = line.substr(pos, end - pos);
+                Color color = labelColor;
+                // Highlight the line if any action is ON
+                if (segment.find(":ON") != std::string::npos) {
+                    color = activeColor;
+                }
+                y = drawLine(renderer, x, y, segment, color);
+                pos = end;
+                if (pos < line.size() && line[pos] == ' ') ++pos;
+            }
+        }
+    }
+
+    return y;
 }
 
 // =============================================================================

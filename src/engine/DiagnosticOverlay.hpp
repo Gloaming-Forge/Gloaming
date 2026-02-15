@@ -78,6 +78,9 @@ private:
 
     /// Format bytes into a human-readable string (B / KB / MB / GB).
     static std::string formatBytes(size_t bytes);
+
+    /// Render the input diagnostics section (active device, keys, gamepad, actions).
+    float renderInputSection(IRenderer* renderer, float x, float y, Engine& engine);
 };
 
 } // namespace gloaming

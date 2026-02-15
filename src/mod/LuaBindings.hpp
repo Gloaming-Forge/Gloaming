@@ -49,6 +49,10 @@ public:
     /// Check if initialized
     bool isInitialized() const { return m_initialized; }
 
+    /// Call all registered "update" handlers with the frame delta time.
+    /// Must be called once per frame from the engine update loop.
+    void tickUpdate(float dt);
+
 private:
     /// Set up the sandbox by removing dangerous functions
     void applySandbox();
@@ -79,6 +83,16 @@ private:
     ContentRegistry* m_registry = nullptr;
     EventBus* m_eventBus = nullptr;
     bool m_initialized = false;
+
+    /// Per-frame update callbacks registered via events.on("update", fn).
+    /// Called directly with dt (float) rather than through the EventBus,
+    /// so Lua handlers receive dt as a plain number argument.
+    struct UpdateHandler {
+        uint64_t id;
+        sol::protected_function callback;
+    };
+    std::vector<UpdateHandler> m_updateCallbacks;
+    uint64_t m_nextUpdateId = 1;
 };
 
 } // namespace gloaming
