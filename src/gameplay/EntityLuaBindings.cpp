@@ -88,7 +88,12 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
     };
 
     // entity.set_sprite(entityId, texturePath)
-    entityApi["set_sprite"] = [&engine](uint32_t entityId, const std::string& texturePath) {
+    entityApi["set_sprite"] = [&engine](uint32_t entityId, const std::string& texturePath,
+                                        sol::this_environment te) {
+        sol::environment& env = te;
+        std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
+        std::string fullPath = modDir.empty() ? texturePath : (modDir + "/" + texturePath);
+
         auto& registry = engine.getRegistry();
         Entity entity = static_cast<Entity>(entityId);
         if (!registry.valid(entity)) {
@@ -96,7 +101,7 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
             return;
         }
 
-        const Texture* texture = engine.getTextureManager().loadTexture(texturePath);
+        const Texture* texture = engine.getTextureManager().loadTexture(fullPath);
         if (!texture) {
             MOD_LOG_WARN("entity.set_sprite: failed to load texture '{}'", texturePath);
             return;
@@ -471,7 +476,9 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
     //     on_hit = function(proj, target) end
     // }
     projectileApi["spawn"] = [&engine, &projectileSystem, &collisionLayers](
-            sol::table opts) -> uint32_t {
+            sol::table opts, sol::this_environment te) -> uint32_t {
+        sol::environment& env = te;
+        std::string modDir = env["_MOD_DIR"].get_or<std::string>("");
         auto& registry = engine.getRegistry();
 
         float x = opts.get_or("x", 0.0f);
@@ -503,7 +510,8 @@ void bindEntityAPI(sol::state& lua, Engine& engine,
         // Sprite
         sol::optional<std::string> spritePath = opts.get<sol::optional<std::string>>("sprite");
         if (spritePath && !spritePath->empty()) {
-            const Texture* tex = engine.getTextureManager().loadTexture(*spritePath);
+            std::string fullSpritePath = modDir.empty() ? *spritePath : (modDir + "/" + *spritePath);
+            const Texture* tex = engine.getTextureManager().loadTexture(fullSpritePath);
             if (tex) {
                 registry.add<Sprite>(entity, tex);
             }

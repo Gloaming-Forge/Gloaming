@@ -4,15 +4,8 @@
 
 local atlas = {}
 
--- Resolve sheet paths relative to the mod directory
-local mod_dir = _MOD_DIR or ""
-local function sheet_path(rel)
-    if mod_dir == "" then return rel end
-    return mod_dir .. "/" .. rel
-end
-
 atlas.characters = {
-    sheet = sheet_path("reference/Spritesheets/spritesheet-characters-double.png"),
+    sheet = "reference/Spritesheets/spritesheet-characters-double.png",
     regions = {
         character_beige_climb_a = { x = 0, y = 0, w = 256, h = 256 },
         character_beige_climb_b = { x = 257, y = 0, w = 256, h = 256 },
@@ -63,7 +56,7 @@ atlas.characters = {
 }
 
 atlas.enemies = {
-    sheet = sheet_path("reference/Spritesheets/spritesheet-enemies-double.png"),
+    sheet = "reference/Spritesheets/spritesheet-enemies-double.png",
     regions = {
         barnacle_attack_a = { x = 0, y = 0, w = 128, h = 128 },
         barnacle_attack_b = { x = 129, y = 0, w = 128, h = 128 },
@@ -129,7 +122,7 @@ atlas.enemies = {
 }
 
 atlas.tiles = {
-    sheet = sheet_path("reference/Spritesheets/spritesheet-tiles-double.png"),
+    sheet = "reference/Spritesheets/spritesheet-tiles-double.png",
     regions = {
         block_blue = { x = 0, y = 0, w = 128, h = 128 },
         block_coin = { x = 129, y = 0, w = 128, h = 128 },
@@ -449,7 +442,7 @@ atlas.tiles = {
 }
 
 atlas.backgrounds = {
-    sheet = sheet_path("reference/Spritesheets/spritesheet-backgrounds-double.png"),
+    sheet = "reference/Spritesheets/spritesheet-backgrounds-double.png",
     regions = {
         background_clouds = { x = 0, y = 0, w = 512, h = 512 },
         background_color_desert = { x = 513, y = 0, w = 512, h = 512 },
