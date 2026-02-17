@@ -83,3 +83,192 @@ TEST(ConfigTest, DeepNesting) {
     EXPECT_EQ(cfg.getInt("a.b.c.d"), 42);
     EXPECT_FALSE(cfg.hasKey("a.b.c.e"));
 }
+
+// =============================================================================
+// Setter Tests
+// =============================================================================
+
+TEST(ConfigTest, SetString) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+
+    cfg.setString("name", "hello");
+    EXPECT_EQ(cfg.getString("name"), "hello");
+    EXPECT_TRUE(cfg.hasKey("name"));
+}
+
+TEST(ConfigTest, SetInt) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+
+    cfg.setInt("count", 42);
+    EXPECT_EQ(cfg.getInt("count"), 42);
+}
+
+TEST(ConfigTest, SetFloat) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+
+    cfg.setFloat("ratio", 3.14f);
+    EXPECT_NEAR(cfg.getFloat("ratio"), 3.14f, 0.01f);
+}
+
+TEST(ConfigTest, SetBool) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+
+    cfg.setBool("enabled", true);
+    EXPECT_TRUE(cfg.getBool("enabled"));
+
+    cfg.setBool("enabled", false);
+    EXPECT_FALSE(cfg.getBool("enabled"));
+}
+
+TEST(ConfigTest, SetOverwritesExisting) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"name": "old"})"));
+
+    cfg.setString("name", "new");
+    EXPECT_EQ(cfg.getString("name"), "new");
+}
+
+TEST(ConfigTest, SetWithDotNotation) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"window": {}})"));
+
+    cfg.setInt("window.width", 1920);
+    cfg.setInt("window.height", 1080);
+    EXPECT_EQ(cfg.getInt("window.width"), 1920);
+    EXPECT_EQ(cfg.getInt("window.height"), 1080);
+}
+
+TEST(ConfigTest, SetCreatesIntermediateObjects) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+
+    cfg.setString("a.b.c", "deep");
+    EXPECT_EQ(cfg.getString("a.b.c"), "deep");
+    EXPECT_TRUE(cfg.hasKey("a"));
+    EXPECT_TRUE(cfg.hasKey("a.b"));
+    EXPECT_TRUE(cfg.hasKey("a.b.c"));
+}
+
+// =============================================================================
+// Dirty Keys Tracking
+// =============================================================================
+
+TEST(ConfigTest, DirtyKeysInitiallyEmpty) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+    EXPECT_TRUE(cfg.dirtyKeys().empty());
+}
+
+TEST(ConfigTest, DirtyKeysAfterSet) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+
+    cfg.setString("name", "test");
+    cfg.setInt("count", 5);
+
+    const auto& dirty = cfg.dirtyKeys();
+    EXPECT_EQ(dirty.size(), 2u);
+    EXPECT_TRUE(dirty.count("name") > 0);
+    EXPECT_TRUE(dirty.count("count") > 0);
+}
+
+TEST(ConfigTest, DirtyKeysNotSetByLoad) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"name": "test"})"));
+    EXPECT_TRUE(cfg.dirtyKeys().empty());
+}
+
+// =============================================================================
+// Raw JSON Access
+// =============================================================================
+
+TEST(ConfigTest, RawAccess) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"x": 10})"));
+
+    const auto& raw = cfg.raw();
+    EXPECT_TRUE(raw.contains("x"));
+    EXPECT_EQ(raw["x"], 10);
+}
+
+TEST(ConfigTest, RawEmptyConfig) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+    EXPECT_TRUE(cfg.raw().empty());
+}
+
+// =============================================================================
+// Save and Load Roundtrip (via temp file)
+// =============================================================================
+
+TEST(ConfigTest, SaveToFileAndReload) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({
+        "name": "test_game",
+        "window": {"width": 800, "height": 600}
+    })"));
+
+    std::string tmpPath = "/tmp/gloaming_test_config.json";
+    ASSERT_TRUE(cfg.saveToFile(tmpPath));
+
+    Config cfg2;
+    ASSERT_TRUE(cfg2.loadFromFile(tmpPath));
+    EXPECT_EQ(cfg2.getString("name"), "test_game");
+    EXPECT_EQ(cfg2.getInt("window.width"), 800);
+    EXPECT_EQ(cfg2.getInt("window.height"), 600);
+
+    std::remove(tmpPath.c_str());
+}
+
+TEST(ConfigTest, SaveOverridesOnly) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"base": "value", "count": 0})"));
+
+    cfg.setInt("count", 42);
+    cfg.setString("new_key", "hello");
+
+    std::string tmpPath = "/tmp/gloaming_test_overrides.json";
+    ASSERT_TRUE(cfg.saveOverridesToFile(tmpPath));
+
+    Config overrides;
+    ASSERT_TRUE(overrides.loadFromFile(tmpPath));
+    EXPECT_EQ(overrides.getInt("count"), 42);
+    EXPECT_EQ(overrides.getString("new_key"), "hello");
+    // Base key should NOT be in overrides file
+    EXPECT_FALSE(overrides.hasKey("base"));
+
+    std::remove(tmpPath.c_str());
+}
+
+TEST(ConfigTest, SaveOverridesEmptyReturnsFalse) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"name": "test"})"));
+    EXPECT_FALSE(cfg.saveOverridesToFile("/tmp/gloaming_no_overrides.json"));
+}
+
+TEST(ConfigTest, SaveToInvalidPathFails) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({})"));
+    EXPECT_FALSE(cfg.saveToFile("/nonexistent/directory/config.json"));
+}
+
+// =============================================================================
+// Edge Cases
+// =============================================================================
+
+TEST(ConfigTest, BooleanValues) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"on": true, "off": false})"));
+    EXPECT_TRUE(cfg.getBool("on"));
+    EXPECT_FALSE(cfg.getBool("off"));
+}
+
+TEST(ConfigTest, ArrayValuesReturnDefault) {
+    Config cfg;
+    ASSERT_TRUE(cfg.loadFromString(R"({"list": [1, 2, 3]})"));
+    EXPECT_EQ(cfg.getInt("list", -1), -1);
+}
