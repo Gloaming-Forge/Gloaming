@@ -36,6 +36,12 @@ add_executable(gloaming_tests
     test_seamlessness.cpp
     test_system_support.cpp
     test_config_persistence.cpp
+    test_vec2.cpp
+    test_camera.cpp
+    test_pathfinding.cpp
+    test_state_machine.cpp
+    test_grid_movement.cpp
+    test_tweens_and_easing.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE
