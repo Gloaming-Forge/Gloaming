@@ -71,11 +71,11 @@ INSTANTIATE_TEST_SUITE_P(MonotonicEasings, EasingMonotonicity,
 // Linear Easing
 // =============================================================================
 
-TEST(EasingTest, LinearMidpoint) {
+TEST(EasingExtTest, LinearMidpoint) {
     EXPECT_FLOAT_EQ(Easing::linear(0.5f), 0.5f);
 }
 
-TEST(EasingTest, LinearQuarter) {
+TEST(EasingExtTest, LinearQuarter) {
     EXPECT_FLOAT_EQ(Easing::linear(0.25f), 0.25f);
 }
 
@@ -83,17 +83,17 @@ TEST(EasingTest, LinearQuarter) {
 // Quadratic Easing
 // =============================================================================
 
-TEST(EasingTest, EaseInQuadMidpoint) {
+TEST(EasingExtTest, EaseInQuadMidpoint) {
     // easeInQuad(0.5) = 0.25
     EXPECT_FLOAT_EQ(Easing::easeInQuad(0.5f), 0.25f);
 }
 
-TEST(EasingTest, EaseOutQuadMidpoint) {
+TEST(EasingExtTest, EaseOutQuadMidpoint) {
     // easeOutQuad(0.5) = 0.75
     EXPECT_FLOAT_EQ(Easing::easeOutQuad(0.5f), 0.75f);
 }
 
-TEST(EasingTest, EaseInOutQuadMidpoint) {
+TEST(EasingExtTest, EaseInOutQuadMidpoint) {
     EXPECT_NEAR(Easing::easeInOutQuad(0.5f), 0.5f, 0.001f);
 }
 
@@ -101,12 +101,12 @@ TEST(EasingTest, EaseInOutQuadMidpoint) {
 // Cubic Easing
 // =============================================================================
 
-TEST(EasingTest, EaseInCubicMidpoint) {
+TEST(EasingExtTest, EaseInCubicMidpoint) {
     // easeInCubic(0.5) = 0.125
     EXPECT_FLOAT_EQ(Easing::easeInCubic(0.5f), 0.125f);
 }
 
-TEST(EasingTest, EaseOutCubicMidpoint) {
+TEST(EasingExtTest, EaseOutCubicMidpoint) {
     // easeOutCubic(0.5) = 0.875
     EXPECT_FLOAT_EQ(Easing::easeOutCubic(0.5f), 0.875f);
 }
@@ -115,7 +115,7 @@ TEST(EasingTest, EaseOutCubicMidpoint) {
 // Elastic Easing — can overshoot
 // =============================================================================
 
-TEST(EasingTest, EaseOutElasticOvershoots) {
+TEST(EasingExtTest, EaseOutElasticOvershoots) {
     // Elastic easing typically overshoots past 1.0 before settling
     bool overshot = false;
     for (int i = 0; i <= 100; ++i) {
@@ -132,7 +132,7 @@ TEST(EasingTest, EaseOutElasticOvershoots) {
 // Bounce Easing
 // =============================================================================
 
-TEST(EasingTest, EaseOutBounceStaysInRange) {
+TEST(EasingExtTest, EaseOutBounceStaysInRange) {
     for (int i = 0; i <= 100; ++i) {
         float t = static_cast<float>(i) / 100.0f;
         float val = Easing::easeOutBounce(t);
@@ -141,7 +141,7 @@ TEST(EasingTest, EaseOutBounceStaysInRange) {
     }
 }
 
-TEST(EasingTest, EaseInBounceStaysInRange) {
+TEST(EasingExtTest, EaseInBounceStaysInRange) {
     for (int i = 0; i <= 100; ++i) {
         float t = static_cast<float>(i) / 100.0f;
         float val = Easing::easeInBounce(t);
@@ -154,7 +154,7 @@ TEST(EasingTest, EaseInBounceStaysInRange) {
 // Back Easing — intentional overshoot
 // =============================================================================
 
-TEST(EasingTest, EaseInBackUndershoots) {
+TEST(EasingExtTest, EaseInBackUndershoots) {
     // easeInBack should go negative initially (pull back before accelerating)
     bool undershot = false;
     for (int i = 0; i <= 100; ++i) {
@@ -167,7 +167,7 @@ TEST(EasingTest, EaseInBackUndershoots) {
     EXPECT_TRUE(undershot) << "easeInBack should undershoot below 0";
 }
 
-TEST(EasingTest, EaseOutBackOvershoots) {
+TEST(EasingExtTest, EaseOutBackOvershoots) {
     bool overshot = false;
     for (int i = 0; i <= 100; ++i) {
         float t = static_cast<float>(i) / 100.0f;

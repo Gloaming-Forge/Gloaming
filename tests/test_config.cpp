@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
 #include "engine/Config.hpp"
 
+#include <filesystem>
+#include <string>
+#include <vector>
+
 using namespace gloaming;
 
 TEST(ConfigTest, LoadFromValidString) {
@@ -202,17 +206,34 @@ TEST(ConfigTest, RawEmptyConfig) {
 }
 
 // =============================================================================
-// Save and Load Roundtrip (via temp file)
+// Save and Load Roundtrip (via temp file with RAII cleanup)
 // =============================================================================
 
-TEST(ConfigTest, SaveToFileAndReload) {
+class ConfigFileTest : public ::testing::Test {
+protected:
+    std::vector<std::string> tempFiles;
+
+    std::string makeTempPath(const std::string& name) {
+        auto path = (std::filesystem::temp_directory_path() / name).string();
+        tempFiles.push_back(path);
+        return path;
+    }
+
+    void TearDown() override {
+        for (const auto& path : tempFiles) {
+            std::filesystem::remove(path);
+        }
+    }
+};
+
+TEST_F(ConfigFileTest, SaveToFileAndReload) {
     Config cfg;
     ASSERT_TRUE(cfg.loadFromString(R"({
         "name": "test_game",
         "window": {"width": 800, "height": 600}
     })"));
 
-    std::string tmpPath = "/tmp/gloaming_test_config.json";
+    auto tmpPath = makeTempPath("gloaming_test_config.json");
     ASSERT_TRUE(cfg.saveToFile(tmpPath));
 
     Config cfg2;
@@ -220,18 +241,16 @@ TEST(ConfigTest, SaveToFileAndReload) {
     EXPECT_EQ(cfg2.getString("name"), "test_game");
     EXPECT_EQ(cfg2.getInt("window.width"), 800);
     EXPECT_EQ(cfg2.getInt("window.height"), 600);
-
-    std::remove(tmpPath.c_str());
 }
 
-TEST(ConfigTest, SaveOverridesOnly) {
+TEST_F(ConfigFileTest, SaveOverridesOnly) {
     Config cfg;
     ASSERT_TRUE(cfg.loadFromString(R"({"base": "value", "count": 0})"));
 
     cfg.setInt("count", 42);
     cfg.setString("new_key", "hello");
 
-    std::string tmpPath = "/tmp/gloaming_test_overrides.json";
+    auto tmpPath = makeTempPath("gloaming_test_overrides.json");
     ASSERT_TRUE(cfg.saveOverridesToFile(tmpPath));
 
     Config overrides;
@@ -240,14 +259,13 @@ TEST(ConfigTest, SaveOverridesOnly) {
     EXPECT_EQ(overrides.getString("new_key"), "hello");
     // Base key should NOT be in overrides file
     EXPECT_FALSE(overrides.hasKey("base"));
-
-    std::remove(tmpPath.c_str());
 }
 
-TEST(ConfigTest, SaveOverridesEmptyReturnsFalse) {
+TEST_F(ConfigFileTest, SaveOverridesEmptyReturnsFalse) {
     Config cfg;
     ASSERT_TRUE(cfg.loadFromString(R"({"name": "test"})"));
-    EXPECT_FALSE(cfg.saveOverridesToFile("/tmp/gloaming_no_overrides.json"));
+    auto tmpPath = makeTempPath("gloaming_no_overrides.json");
+    EXPECT_FALSE(cfg.saveOverridesToFile(tmpPath));
 }
 
 TEST(ConfigTest, SaveToInvalidPathFails) {

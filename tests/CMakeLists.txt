@@ -41,7 +41,7 @@ add_executable(gloaming_tests
     test_pathfinding.cpp
     test_state_machine.cpp
     test_grid_movement.cpp
-    test_easing.cpp
+    test_tweens_and_easing.cpp
 )
 
 target_link_libraries(gloaming_tests PRIVATE

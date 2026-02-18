@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
 #include "engine/Log.hpp"
 
+#include <filesystem>
 #include <fstream>
-#include <cstdio>
+#include <string>
 
 using namespace gloaming;
 
@@ -134,10 +135,23 @@ TEST_F(LogTest, MacrosWithFormatArgs) {
     EXPECT_NO_THROW(MOD_LOG_INFO("Mod {} loaded v{}", "mymod", "1.0"));
 }
 
-TEST_F(LogTest, FileLogging) {
-    std::string logPath = "/tmp/gloaming_test_log.txt";
-    std::remove(logPath.c_str());
+class LogFileTest : public ::testing::Test {
+protected:
+    std::string logPath;
 
+    void SetUp() override {
+        spdlog::drop_all();
+        logPath = (std::filesystem::temp_directory_path() / "gloaming_test_log.txt").string();
+        std::filesystem::remove(logPath);
+    }
+
+    void TearDown() override {
+        spdlog::drop_all();
+        std::filesystem::remove(logPath);
+    }
+};
+
+TEST_F(LogFileTest, FileLogging) {
     Log::init(logPath, "debug");
     LOG_INFO("File log test message");
 
@@ -147,7 +161,4 @@ TEST_F(LogTest, FileLogging) {
     // Verify file exists (content verification would require reading the file)
     std::ifstream f(logPath);
     EXPECT_TRUE(f.good()) << "Log file should have been created";
-    f.close();
-
-    std::remove(logPath.c_str());
 }
