@@ -183,20 +183,20 @@ TEST(EasingTest, EaseOutBackOvershoots) {
 // TweenSystem Basic Tests (no Registry needed)
 // =============================================================================
 
-TEST(TweenSystemTest, InitiallyEmpty) {
+TEST(TweenSystemBasicTest, InitiallyEmpty) {
     TweenSystem tweens;
     EXPECT_EQ(tweens.activeCount(), 0u);
     EXPECT_FALSE(tweens.isShaking());
 }
 
-TEST(TweenSystemTest, ShakeOffset) {
+TEST(TweenSystemBasicTest, ShakeOffset) {
     TweenSystem tweens;
     Vec2 offset = tweens.getShakeOffset();
     EXPECT_FLOAT_EQ(offset.x, 0.0f);
     EXPECT_FLOAT_EQ(offset.y, 0.0f);
 }
 
-TEST(TweenSystemTest, Clear) {
+TEST(TweenSystemBasicTest, Clear) {
     TweenSystem tweens;
     tweens.clear();
     EXPECT_EQ(tweens.activeCount(), 0u);
